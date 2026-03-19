@@ -38,3 +38,8 @@ main
 
 .env
 __pycache__
+
+# runtime memory
+memory/**
+!memory/
+!memory/MEMORY.md
