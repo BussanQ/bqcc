@@ -1,0 +1,9 @@
+# Agently Model Config
+# Environment variables: OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL
+
+plugins:
+  ModelRequester:
+    OpenAICompatible:
+      base_url: "${ENV.OPENAI_BASE_URL}"
+      auth: "${ENV.OPENAI_API_KEY}"
+      model: "${ENV.OPENAI_MODEL}"
