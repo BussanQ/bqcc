@@ -31,6 +31,7 @@ except ImportError:
 from agently import Agently
 
 from services.memory_manager import MemoryManager
+from services.output_cleaner import sanitize_assistant_output
 from services.workspace_loader import inject_workspace, load_rules, load_skills, load_workspace
 from tools import register_tools
 from workflow.chat_mode import run_chat_mode
@@ -162,7 +163,7 @@ async def run_direct_task(agent, tool_funcs, task: str) -> str:
     """Execute one task in direct tool-using mode."""
     print("\n[Mode] Direct execution")
     result = await agent.input(task).use_tools(tool_funcs).async_start()
-    return str(result) if result else "(no result)"
+    return sanitize_assistant_output(result)
 
 
 async def run_single_task(agent, tool_funcs, task: str, use_plan: bool = False) -> str:

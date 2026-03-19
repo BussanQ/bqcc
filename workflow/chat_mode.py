@@ -1,6 +1,7 @@
 """Interactive chat mode for AgentlyBq."""
 from collections.abc import Awaitable, Callable
 
+from services.output_cleaner import sanitize_assistant_output, sanitize_chat_history
 from services.session_store import SessionStore
 from workflow.plan_execute import run_plan_execute
 
@@ -14,6 +15,14 @@ HELP_TEXT = """Commands:
   /exit      Save and exit
   /quit      Save and exit
 """
+
+
+def _sanitize_active_session(agent):
+    """Rewrite stored chat history to remove reasoning noise."""
+    if agent.activated_session is None:
+        return
+    cleaned_history = sanitize_chat_history(agent.activated_session.full_context)
+    agent.set_chat_history(cleaned_history)
 
 
 async def _run_planned_chat_turn(agent, tool_funcs, task: str) -> str:
@@ -34,6 +43,7 @@ async def _run_planned_chat_turn(agent, tool_funcs, task: str) -> str:
             {"role": "assistant", "content": result},
         ]
     )
+    _sanitize_active_session(agent)
     return result
 
 
@@ -58,7 +68,7 @@ async def run_chat_mode(
     store = SessionStore()
     final_session_id = store.create_session_id(session_id)
 
-    agent.settings.set("session.input_keys", ["input"])
+    agent.settings.set("session.input_keys", "input")
     agent.settings.set("session.max_length", SESSION_MAX_LENGTH)
     agent.activate_session(session_id=final_session_id)
 
@@ -108,7 +118,8 @@ async def run_chat_mode(
                 result_text = await _run_planned_chat_turn(agent, tool_funcs, user_input)
             else:
                 result = await agent.input(user_input).use_tools(tool_funcs).async_start()
-                result_text = str(result) if result else "(no result)"
+                result_text = sanitize_assistant_output(result)
+                _sanitize_active_session(agent)
         except Exception as e:
             result_text = f"Error: {e}"
             if agent.activated_session is not None:
@@ -118,6 +129,7 @@ async def run_chat_mode(
                         {"role": "assistant", "content": result_text},
                     ]
                 )
+                _sanitize_active_session(agent)
 
         print(f"\nAssistant> {result_text}")
 
