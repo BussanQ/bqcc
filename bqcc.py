@@ -123,6 +123,44 @@ async def self_optimize(agent, memory: MemoryManager, task: str, result: str):
 
 
 # ---------------------------------------------------------------------------
+# Project reset
+# ---------------------------------------------------------------------------
+
+def reset_project(include_memory: bool = False):
+    """Clear runtime data: daily logs, sessions, and optionally long-term memory."""
+    import glob as _glob
+    import shutil
+
+    removed = []
+
+    memory_dir = "memory"
+    sessions_dir = os.path.join(memory_dir, "sessions")
+    longterm_file = os.path.join(memory_dir, "MEMORY.md")
+
+    # Remove daily log files (memory/YYYY-MM-DD.md)
+    for path in _glob.glob(os.path.join(memory_dir, "????-??-??.md")):
+        os.remove(path)
+        removed.append(path)
+
+    # Remove all session files
+    if os.path.isdir(sessions_dir):
+        shutil.rmtree(sessions_dir)
+        removed.append(sessions_dir)
+
+    # Optionally clear long-term memory
+    if include_memory and os.path.exists(longterm_file):
+        os.remove(longterm_file)
+        removed.append(longterm_file)
+
+    if removed:
+        for item in removed:
+            print(f"[Reset] Removed: {item}")
+    else:
+        print("[Reset] Nothing to clear.")
+    print("[Reset] Done.")
+
+
+# ---------------------------------------------------------------------------
 # Bootstrap and execution
 # ---------------------------------------------------------------------------
 
@@ -221,6 +259,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan", action="store_true", help="Enable TriggerFlow plan-then-execute mode")
     parser.add_argument("--chat", action="store_true", help="Start interactive conversation mode")
     parser.add_argument("--session", help="Session ID to resume or create for --chat mode")
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Clear runtime data (daily logs and sessions) and exit",
+    )
+    parser.add_argument(
+        "--reset-memory",
+        action="store_true",
+        help="Also clear long-term memory (memory/MEMORY.md) when used with --reset",
+    )
     return parser
 
 
@@ -232,12 +280,19 @@ def parse_args(argv: list[str] | None = None):
         parser.error("--session requires --chat")
     if args.chat and args.task:
         parser.error("--chat does not accept a one-shot task; start the session and type messages interactively")
+    if args.reset_memory and not args.reset:
+        parser.error("--reset-memory requires --reset")
 
     return parser, args
 
 
 if __name__ == "__main__":
     parser, args = parse_args()
+
+    if args.reset:
+        reset_project(include_memory=args.reset_memory)
+        sys.exit(0)
+
     task = " ".join(args.task).strip()
 
     if not args.chat and not task:

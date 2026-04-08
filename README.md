@@ -137,6 +137,16 @@ python bqcc.py --chat --session my-session
 python bqcc.py --chat --plan
 ```
 
+### 清空运行期数据
+
+```bash
+# 清除每日日志和会话文件，保留长期记忆
+python bqcc.py --reset
+
+# 同时清除长期记忆（memory/MEMORY.md）
+python bqcc.py --reset --reset-memory
+```
+
 ## 对话模式命令
 
 进入 `--chat` 后可用命令：
