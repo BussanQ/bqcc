@@ -1,0 +1,205 @@
+package memory
+
+import (
+	"crypto/ed25519"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	icrypto "github.com/example/decentid/internal/crypto"
+	"github.com/example/decentid/pkg/types"
+)
+
+func NewObject(kind string, payload string, visibility types.Visibility, refs []string, metadata map[string]string) (types.MemoryObject, error) {
+	now := time.Now().UTC()
+	base := map[string]interface{}{
+		"type":       kind,
+		"createdAt":  now.Format(time.RFC3339Nano),
+		"payload":    payload,
+		"visibility": visibility,
+		"references": refs,
+		"metadata":   metadata,
+	}
+	encoded, err := icrypto.CanonicalJSON(base)
+	if err != nil {
+		return types.MemoryObject{}, err
+	}
+	contentHash := icrypto.HashBytes(encoded)
+	cid := icrypto.HashString("memory:" + contentHash)
+	return types.MemoryObject{CID: cid, Type: kind, CreatedAt: now, ContentHash: contentHash, Payload: payload, Visibility: visibility, References: refs, Metadata: metadata}, nil
+}
+
+func NewPrivateObject(kind string, payload string, recipientKeyID string, recipientPublicKey []byte, refs []string, metadata map[string]string) (types.MemoryObject, error) {
+	now := time.Now().UTC()
+	plaintextBase := map[string]interface{}{
+		"type":       kind,
+		"createdAt":  now.Format(time.RFC3339Nano),
+		"payload":    payload,
+		"visibility": types.VisibilityPrivate,
+		"references": refs,
+		"metadata":   metadata,
+	}
+	plaintext, err := icrypto.CanonicalJSON(plaintextBase)
+	if err != nil {
+		return types.MemoryObject{}, err
+	}
+	ciphertext, ephemeralPublicKey, nonce, err := icrypto.EncryptForRecipient(plaintext, recipientPublicKey)
+	if err != nil {
+		return types.MemoryObject{}, err
+	}
+	encryption := &types.MemoryEncryption{
+		Algorithm:          "x25519-aes256-gcm",
+		RecipientKeyID:     recipientKeyID,
+		EphemeralPublicKey: icrypto.BytesString(ephemeralPublicKey),
+		CipherNonce:        icrypto.BytesString(nonce),
+	}
+	cipherBase := map[string]interface{}{
+		"type":       kind,
+		"createdAt":  now.Format(time.RFC3339Nano),
+		"ciphertext": icrypto.BytesString(ciphertext),
+		"encryption": map[string]interface{}{"algorithm": encryption.Algorithm, "recipientKeyId": encryption.RecipientKeyID, "ephemeralPublicKey": encryption.EphemeralPublicKey, "cipherNonce": encryption.CipherNonce},
+		"visibility": types.VisibilityPrivate,
+		"references": refs,
+		"metadata":   metadata,
+	}
+	encoded, err := icrypto.CanonicalJSON(cipherBase)
+	if err != nil {
+		return types.MemoryObject{}, err
+	}
+	contentHash := icrypto.HashBytes(plaintext)
+	cid := icrypto.HashString("memory:" + icrypto.HashBytes(encoded))
+	return types.MemoryObject{CID: cid, Type: kind, CreatedAt: now, ContentHash: contentHash, Ciphertext: icrypto.BytesString(ciphertext), Encryption: encryption, Visibility: types.VisibilityPrivate, References: refs, Metadata: metadata}, nil
+}
+
+func DecryptObject(obj types.MemoryObject, recipientPrivateKey []byte) (string, error) {
+	if obj.Encryption == nil {
+		return obj.Payload, nil
+	}
+	ciphertext, err := icrypto.ParseBytes(obj.Ciphertext)
+	if err != nil {
+		return "", err
+	}
+	ephemeralPublicKey, err := icrypto.ParseBytes(obj.Encryption.EphemeralPublicKey)
+	if err != nil {
+		return "", err
+	}
+	nonce, err := icrypto.ParseBytes(obj.Encryption.CipherNonce)
+	if err != nil {
+		return "", err
+	}
+	plaintext, err := icrypto.DecryptForRecipient(ciphertext, ephemeralPublicKey, nonce, recipientPrivateKey)
+	if err != nil {
+		return "", err
+	}
+	if payload, ok := extractCanonicalStringField(plaintext, "payload"); ok {
+		return payload, nil
+	}
+	return string(plaintext), nil
+}
+
+func extractCanonicalStringField(plaintext []byte, field string) (string, bool) {
+	var ordered []interface{}
+	if err := json.Unmarshal(plaintext, &ordered); err != nil {
+		return "", false
+	}
+	for idx := 0; idx+1 < len(ordered); idx += 2 {
+		key, ok := ordered[idx].(string)
+		if !ok {
+			return "", false
+		}
+		if key != field {
+			continue
+		}
+		value, ok := ordered[idx+1].(string)
+		return value, ok
+	}
+	return "", false
+}
+
+func SignObject(obj *types.MemoryObject, priv ed25519.PrivateKey) error {
+	payload := map[string]interface{}{
+		"cid":         obj.CID,
+		"type":        obj.Type,
+		"createdAt":   obj.CreatedAt.Format(time.RFC3339Nano),
+		"contentHash": obj.ContentHash,
+		"payload":     obj.Payload,
+		"ciphertext":  obj.Ciphertext,
+		"visibility":  obj.Visibility,
+		"references":  obj.References,
+		"metadata":    obj.Metadata,
+	}
+	if obj.Encryption != nil {
+		payload["encryption"] = map[string]interface{}{"algorithm": obj.Encryption.Algorithm, "recipientKeyId": obj.Encryption.RecipientKeyID, "ephemeralPublicKey": obj.Encryption.EphemeralPublicKey, "wrappedKey": obj.Encryption.WrappedKey, "wrappedKeyNonce": obj.Encryption.WrappedKeyNonce, "cipherNonce": obj.Encryption.CipherNonce}
+	}
+	encoded, err := icrypto.CanonicalJSON(payload)
+	if err != nil {
+		return err
+	}
+	obj.Signature = icrypto.SignBytes(priv, encoded)
+	return nil
+}
+
+func VerifyObject(obj types.MemoryObject, pub ed25519.PublicKey) bool {
+	payload := map[string]interface{}{
+		"cid":         obj.CID,
+		"type":        obj.Type,
+		"createdAt":   obj.CreatedAt.Format(time.RFC3339Nano),
+		"contentHash": obj.ContentHash,
+		"payload":     obj.Payload,
+		"ciphertext":  obj.Ciphertext,
+		"visibility":  obj.Visibility,
+		"references":  obj.References,
+		"metadata":    obj.Metadata,
+	}
+	if obj.Encryption != nil {
+		payload["encryption"] = map[string]interface{}{"algorithm": obj.Encryption.Algorithm, "recipientKeyId": obj.Encryption.RecipientKeyID, "ephemeralPublicKey": obj.Encryption.EphemeralPublicKey, "wrappedKey": obj.Encryption.WrappedKey, "wrappedKeyNonce": obj.Encryption.WrappedKeyNonce, "cipherNonce": obj.Encryption.CipherNonce}
+	}
+	encoded, err := icrypto.CanonicalJSON(payload)
+	if err != nil {
+		return false
+	}
+	return icrypto.VerifyBytes(pub, encoded, obj.Signature)
+}
+
+func NewManifest(visibility types.Visibility, items []types.MemoryObject) (types.MemoryManifest, error) {
+	now := time.Now().UTC()
+	cids := make([]string, 0, len(items))
+	for _, item := range items {
+		if visibility != item.Visibility {
+			return types.MemoryManifest{}, fmt.Errorf("manifest visibility mismatch")
+		}
+		cids = append(cids, item.CID)
+	}
+	base := map[string]interface{}{
+		"version":    "1",
+		"createdAt":  now.Format(time.RFC3339Nano),
+		"visibility": visibility,
+		"items":      cids,
+	}
+	encoded, err := icrypto.CanonicalJSON(base)
+	if err != nil {
+		return types.MemoryManifest{}, err
+	}
+	rootHash := icrypto.HashBytes(encoded)
+	cid := icrypto.HashString("manifest:" + rootHash)
+	return types.MemoryManifest{Version: "1", CID: cid, CreatedAt: now, Visibility: visibility, Items: cids, RootHash: rootHash}, nil
+}
+
+func SignManifest(manifest *types.MemoryManifest, priv ed25519.PrivateKey) error {
+	payload := map[string]interface{}{"version": manifest.Version, "cid": manifest.CID, "createdAt": manifest.CreatedAt.Format(time.RFC3339Nano), "visibility": manifest.Visibility, "items": manifest.Items, "rootHash": manifest.RootHash}
+	encoded, err := icrypto.CanonicalJSON(payload)
+	if err != nil {
+		return err
+	}
+	manifest.Signature = icrypto.SignBytes(priv, encoded)
+	return nil
+}
+
+func VerifyManifest(manifest types.MemoryManifest, pub ed25519.PublicKey) bool {
+	payload := map[string]interface{}{"version": manifest.Version, "cid": manifest.CID, "createdAt": manifest.CreatedAt.Format(time.RFC3339Nano), "visibility": manifest.Visibility, "items": manifest.Items, "rootHash": manifest.RootHash}
+	encoded, err := icrypto.CanonicalJSON(payload)
+	if err != nil {
+		return false
+	}
+	return icrypto.VerifyBytes(pub, encoded, manifest.Signature)
+}
