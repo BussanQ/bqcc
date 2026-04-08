@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+/bin/
+*.exe
+*.test
+*.out
+coverage.out
+.claude/
+.agent/
+.cache/
+.env
+*.log
+.idea
+identity.json

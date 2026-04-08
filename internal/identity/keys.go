@@ -89,8 +89,34 @@ func MarshalLocal(local LocalIdentity) ([]byte, error) {
 
 func UnmarshalLocal(data []byte) (LocalIdentity, error) {
 	var local LocalIdentity
-	err := json.Unmarshal(data, &local)
-	return local, err
+	if err := json.Unmarshal(data, &local); err != nil {
+		return local, err
+	}
+	for idx := range local.Events {
+		normalizeEventPayload(&local.Events[idx])
+	}
+	return local, nil
+}
+
+func normalizeEventPayload(event *types.IdentityEvent) {
+	if event == nil || event.Payload == nil {
+		return
+	}
+	profile, ok := event.Payload["profile"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	attributes, ok := profile["attributes"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	normalized := make(map[string]string, len(attributes))
+	for key, value := range attributes {
+		if str, ok := value.(string); ok {
+			normalized[key] = str
+		}
+	}
+	profile["attributes"] = normalized
 }
 
 func (i *Identity) PreferredRootPrivateKey() (ed25519.PrivateKey, error) {
