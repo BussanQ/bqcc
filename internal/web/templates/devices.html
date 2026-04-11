@@ -1,0 +1,49 @@
+{{template "shell_start" .}}
+{{template "identity_strip" .}}
+
+<section class="split-layout">
+  <div class="stack">
+    <form class="panel action-form" data-endpoint="/api/devices/add">
+      <span class="eyebrow">添加设备</span>
+      <h2>添加新的 device signer</h2>
+      <p>设备 key 用于 challenge-response 签名；管理事件仍由 active root key 签名。</p>
+      <label>标签<input name="label" value="laptop"></label>
+      <button class="primary-button" type="submit">添加设备</button>
+    </form>
+
+    <form class="panel action-form" data-endpoint="/api/devices/revoke" data-confirm="撤销设备后，该设备 key 不能再用于 challenge 签名。继续？">
+      <span class="eyebrow">撤销设备</span>
+      <h2>撤销丢失或不可信设备</h2>
+      <label>设备 key ID<input name="keyId" placeholder="输入 key ID"></label>
+      <label>原因<input name="reason" placeholder="丢失 / 已替换 / 疑似泄露"></label>
+      <button class="danger-button" type="submit">撤销设备</button>
+    </form>
+
+    <form class="panel action-form" data-endpoint="/api/devices/rotate-root" data-confirm="旋转 root 会改变控制器 key material，但 DID 保持不变。继续？">
+      <span class="eyebrow">旋转 root</span>
+      <h2>旋转 root key</h2>
+      <p>事件链仍保持追加式记录，历史签名通过 replay 验证。</p>
+      <label>新 root 标签<input name="label" value="rotated-root"></label>
+      <button class="danger-button" type="submit">旋转 root</button>
+    </form>
+  </div>
+
+  <aside class="panel sticky-panel">
+    <span class="eyebrow">密钥时间线</span>
+    <div class="timeline">
+      {{range .Summary.Keys}}
+        <div class="timeline-item {{if not .RevokedAt.IsZero}}is-revoked{{end}}">
+          <span class="dot"></span>
+          <strong>{{.Role}} · {{short .ID}}</strong>
+          <small>{{.AddedAt.Format "2006-01-02 15:04"}}</small>
+          {{if not .RevokedAt.IsZero}}<em>已撤销：{{.RevokedReason}}</em>{{end}}
+        </div>
+      {{else}}
+        <p class="muted">暂无 key 事件。</p>
+      {{end}}
+    </div>
+  </aside>
+</section>
+
+{{template "result_panel" .}}
+{{template "shell_end" .}}

@@ -117,6 +117,7 @@ attestation 的流转是：
 ## 代码结构
 
 - `cmd/node/`：CLI 入口
+- `cmd/web/`：本地浏览器操作台入口
 - `pkg/types/`：共享结构定义
 - `internal/crypto/`：Ed25519、X25519、哈希、canonical JSON
 - `internal/identity/`：身份创建、事件链、回放验证、本地 keyring
@@ -124,6 +125,8 @@ attestation 的流转是：
 - `internal/auth/`：challenge-response
 - `internal/attestation/`：attestation 创建、签名、验证
 - `internal/p2p/`：libp2p resolver、state / object exchange
+- `internal/app/`：操作服务层，复用协议能力并隐藏默认私钥输出
+- `internal/web/`：HTTP handlers、templates、static assets
 
 ## 环境要求
 
@@ -227,6 +230,28 @@ go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 - 放入 public memory manifest / object
 - 默认放入 attached attestation object
 - **不会发布 private memory**
+
+## Web 操作台
+
+可以启动一个仅监听本机的浏览器操作界面：
+
+```bash
+go run ./cmd/web -identity alice.json -addr 127.0.0.1:8080
+```
+
+打开输出的本地 URL 后，可通过页面完成：
+- 创建身份、查看公开 signed state、导出 verifier 可用 state
+- 添加 public / private memory，并显式解密查看 private memory
+- 添加 / 撤销 device，rotate root
+- challenge → respond → verify
+- issue / verify / attach attestation
+- publish / resolve P2P public state
+
+安全边界：
+- Web 操作台默认拒绝非 loopback 绑定和非 localhost Host
+- 默认 API 不返回 `localKeys` 或私钥字节
+- private memory 只有用户点击 reveal 时才显示明文
+- publish 仍只发布 signed identity state、public memory 和可选 attached attestation，不发布 private memory
 
 ## CLI 命令速查
 

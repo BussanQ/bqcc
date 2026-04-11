@@ -1,0 +1,77 @@
+{{template "shell_start" .}}
+{{template "identity_strip" .}}
+
+<section class="hero-grid">
+  <article class="hero-card">
+    <span class="eyebrow">操作姿态</span>
+    <h2>把去中心化身份操作从命令行整理成可引导的工作台。</h2>
+    <p>本界面复用现有协议能力：DID 稳定派生、事件链回放验证、私有记忆加密、无中心化挑战-响应。</p>
+    <div class="hero-actions">
+      <a class="primary-link" href="/identity">创建 / 查看身份</a>
+      <a class="secondary-link" href="/auth">验证挑战</a>
+    </div>
+  </article>
+  <article class="metric-card accent-blue">
+    <span class="eyebrow">公开记忆根</span>
+    <strong>{{if .Summary.PublicMemoryRoot}}{{short .Summary.PublicMemoryRoot}}{{else}}无{{end}}</strong>
+    <p>发布时只包含公开记忆与已附着证明。</p>
+  </article>
+  <article class="metric-card accent-amber">
+    <span class="eyebrow">私有记忆根</span>
+    <strong>{{if .Summary.PrivateMemoryRoot}}{{short .Summary.PrivateMemoryRoot}}{{else}}无{{end}}</strong>
+    <p>私有记忆保持加密，默认不会通过 P2P 发布。</p>
+  </article>
+</section>
+
+<section class="workflow-grid">
+  <a class="workflow-card" href="/identity">
+    <span>01</span>
+    <h3>身份</h3>
+    <p>创建 DID、查看公开状态、复制验证方可用材料。</p>
+  </a>
+  <a class="workflow-card" href="/memory">
+    <span>02</span>
+    <h3>记忆</h3>
+    <p>写入公开或加密私有记忆，查看 CID 与清单。</p>
+  </a>
+  <a class="workflow-card" href="/devices">
+    <span>03</span>
+    <h3>设备</h3>
+    <p>添加设备、撤销丢失设备、旋转根 key 且保持 DID。</p>
+  </a>
+  <a class="workflow-card" href="/auth">
+    <span>04</span>
+    <h3>认证</h3>
+    <p>生成挑战、用有效设备签名、用公开状态验证。</p>
+  </a>
+  <a class="workflow-card" href="/attestations">
+    <span>05</span>
+    <h3>证明</h3>
+    <p>签发、验证、以 CID 引用方式附着证明对象。</p>
+  </a>
+  <a class="workflow-card" href="/network">
+    <span>06</span>
+    <h3>网络</h3>
+    <p>发布签名状态，并从对端地址解析远端状态。</p>
+  </a>
+</section>
+
+<section class="panel two-column">
+  <div>
+    <span class="eyebrow">本地密钥态势</span>
+    <h2>密钥清单</h2>
+    <p>只展示公开 key 与本地持有状态；私钥不会出现在默认 API 响应中。</p>
+  </div>
+  <div class="key-table compact">
+    {{range .Summary.Keys}}
+      <div class="key-row">
+        <span class="badge {{if .RevokedAt.IsZero}}badge-public{{else}}badge-danger{{end}}">{{.Role}}</span>
+        <code>{{short .ID}}</code>
+        {{if .HasLocalPrivateKey}}<span class="badge badge-local">本地持有</span>{{end}}
+      </div>
+    {{else}}
+      <p class="muted">还没有本地身份。</p>
+    {{end}}
+  </div>
+</section>
+{{template "shell_end" .}}

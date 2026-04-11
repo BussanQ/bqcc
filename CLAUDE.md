@@ -30,7 +30,10 @@ This repository is a Go prototype for a decentralized identity system:
 - `internal/auth/`: challenge-response signing and verification
 - `internal/attestation/`: attestation creation, signing, verification
 - `internal/p2p/`: libp2p resolver for state/object exchange
+- `internal/app/`: application service layer shared by user interfaces
+- `internal/web/`: localhost web operation console handlers, templates, and static assets
 - `cmd/node/`: CLI prototype
+- `cmd/web/`: browser-based local operation console
 
 ## Implementation guidance
 

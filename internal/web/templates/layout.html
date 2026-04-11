@@ -1,0 +1,91 @@
+{{define "shell_start"}}
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{pageTitle .Title}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="console-shell">
+    <aside class="rail" aria-label="主导航">
+      <a class="brand" href="/" aria-label="DecentID 控制台首页">
+        <span class="brand-mark">D</span>
+        <span>
+          <strong>DecentID</strong>
+          <small>本地身份操作台</small>
+        </span>
+      </a>
+      <nav class="nav-list">
+        <a class="nav-item {{activeClass .Active "dashboard"}}" href="/">总览</a>
+        <a class="nav-item {{activeClass .Active "identity"}}" href="/identity">身份</a>
+        <a class="nav-item {{activeClass .Active "memory"}}" href="/memory">记忆</a>
+        <a class="nav-item {{activeClass .Active "devices"}}" href="/devices">设备</a>
+        <a class="nav-item {{activeClass .Active "auth"}}" href="/auth">认证</a>
+        <a class="nav-item {{activeClass .Active "attestations"}}" href="/attestations">证明</a>
+        <a class="nav-item {{activeClass .Active "network"}}" href="/network">网络</a>
+      </nav>
+      <section class="rail-card">
+        <span class="eyebrow">身份文件</span>
+        <code>{{.IdentityPath}}</code>
+        <p>本地私有身份文件包含 keyring；界面默认隐藏私钥。</p>
+      </section>
+    </aside>
+    <main class="workspace">
+      <header class="topbar">
+        <div>
+          <span class="eyebrow">{{.Now.Format "2006-01-02 15:04 UTC"}}</span>
+          <h1>{{.Title}}</h1>
+        </div>
+        <div class="status-stack">
+          {{if .Summary.HasIdentity}}
+            <span class="badge badge-local">本地私有</span>
+            <span class="badge badge-public">公开状态就绪</span>
+          {{else}}
+            <span class="badge badge-warn">未创建身份</span>
+          {{end}}
+        </div>
+      </header>
+      {{if .Summary.Warning}}<div class="notice">{{.Summary.Warning}}</div>{{end}}
+{{end}}
+
+{{define "shell_end"}}
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
+{{end}}
+
+{{define "result_panel"}}
+<section class="result-panel">
+  <div class="result-heading">
+    <div>
+      <span class="eyebrow">操作结果</span>
+      <h2>执行结果</h2>
+    </div>
+    <button class="ghost-button" type="button" data-copy-target="#global-result">复制 JSON</button>
+  </div>
+  <pre id="global-result" class="json-output">等待操作结果…</pre>
+</section>
+{{end}}
+
+{{define "identity_strip"}}
+<section class="identity-strip">
+  <div>
+    <span class="eyebrow">DID</span>
+    {{if .Summary.HasIdentity}}
+      <code class="did-line">{{.Summary.DID}}</code>
+    {{else}}
+      <strong>未创建本地身份</strong>
+    {{end}}
+  </div>
+  <div class="mini-metrics">
+    <span><b>{{.Summary.EventCount}}</b> 事件</span>
+    <span><b>{{.Summary.KeyCounts.Device}}</b> 设备</span>
+    <span><b>{{.Summary.AttestationCount}}</b> 证明</span>
+  </div>
+</section>
+{{end}}

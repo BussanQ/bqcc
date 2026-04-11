@@ -1,0 +1,40 @@
+{{template "shell_start" .}}
+{{template "identity_strip" .}}
+
+<section class="split-layout">
+  <div class="stack">
+    <form class="panel action-form" data-endpoint="/api/attestations/issue">
+      <span class="eyebrow">签发方</span>
+      <h2>签发独立证明对象</h2>
+      <p>证明是独立对象；主体身份只通过事件附着 CID。</p>
+      <label>主体 DID<input name="subjectId" placeholder="did:p2p:..."></label>
+      <label>Claim 类型<input name="claimType" value="known"></label>
+      <label>Claim 值<input name="claimValue" placeholder="例如：Alice"></label>
+      <label>证据引用<input name="evidenceRef" placeholder="可选 CID 或 URL ref"></label>
+      <label>有效期<input name="validFor" value="24h"></label>
+      <label>输出文件<input name="outPath" placeholder="attestation.json"></label>
+      <button class="primary-button" type="submit">签发证明</button>
+    </form>
+
+    <form class="panel action-form" data-endpoint="/api/attestations/verify">
+      <span class="eyebrow">验证方</span>
+      <h2>使用签发方公开状态验证</h2>
+      <label>签发方公开状态 JSON<textarea name="issuerStateJson" rows="8" placeholder="粘贴签发方 signed identity state"></textarea></label>
+      <label>证明 JSON<textarea name="attestationJson" rows="8" placeholder="粘贴 attestation JSON"></textarea></label>
+      <button class="primary-button" type="submit">验证证明</button>
+    </form>
+  </div>
+
+  <aside class="panel sticky-panel">
+    <form class="action-form embedded" data-endpoint="/api/attestations/attach" data-confirm="这会向主体身份追加 AttachAttestation event，并写入 CID 对象文件。继续？">
+      <span class="eyebrow">主体身份</span>
+      <h2>附着证明 CID</h2>
+      <p>不会把证明对象嵌进 document payload，只引用 CID。</p>
+      <label>证明 JSON<textarea name="attestationJson" rows="10" placeholder="粘贴 attestation JSON"></textarea></label>
+      <button class="primary-button" type="submit">附着引用</button>
+    </form>
+  </aside>
+</section>
+
+{{template "result_panel" .}}
+{{template "shell_end" .}}
