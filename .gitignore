@@ -11,4 +11,4 @@ coverage.out
 .env
 *.log
 .idea
-bq/*.json
+*.json

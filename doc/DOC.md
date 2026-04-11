@@ -86,11 +86,19 @@ go run ./cmd/node challenge -id "did:p2p:..." -out challenge.json
 go run ./cmd/node respond -identity alice.json -challenge challenge.json -out response.json
 ```
 
+导出公开身份状态给验证方：
+
+```bash
+go run ./cmd/node export-state -identity alice.json -out alice-state.json
+```
+
 验证响应：
 
 ```bash
-go run ./cmd/node verify -identity alice.json -response response.json
+go run ./cmd/node verify -state alice-state.json -response response.json
 ```
+
+`alice.json` 是本地私有身份文件，包含私钥材料，不应该交给验证方；验证方只需要公开的 `alice-state.json`。
 
 也可以指定设备 key：
 

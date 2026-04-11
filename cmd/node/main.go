@@ -34,6 +34,8 @@ func main() {
 		runShowMemory(os.Args[2:])
 	case "show":
 		runShow(os.Args[2:])
+	case "export-state":
+		runExportState(os.Args[2:])
 	case "keys":
 		runKeys(os.Args[2:])
 	case "add-device":
@@ -65,7 +67,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Println("decentid node commands: create | add-memory | show-memory | show | keys | add-device | revoke-device | rotate-root | issue-attestation | verify-attestation | attach-attestation | challenge | respond | verify | publish | resolve")
+	fmt.Println("decentid node commands: create | add-memory | show-memory | show | export-state | keys | add-device | revoke-device | rotate-root | issue-attestation | verify-attestation | attach-attestation | challenge | respond | verify | publish | resolve")
 }
 
 func runCreate(args []string) {
@@ -153,6 +155,17 @@ func runShow(args []string) {
 
 	id := loadIdentity(*file)
 	printJSON(id.ExportLocal())
+}
+
+func runExportState(args []string) {
+	fs := flag.NewFlagSet("export-state", flag.ExitOnError)
+	file := fs.String("identity", "identity.json", "identity file")
+	out := fs.String("out", "identity-state.json", "output public state file")
+	fs.Parse(args)
+
+	id := loadIdentity(*file)
+	writeJSON(*out, id.SignedState())
+	fmt.Printf("state written to %s\n", *out)
 }
 
 func runKeys(args []string) {
@@ -294,14 +307,26 @@ func runRespond(args []string) {
 
 func runVerify(args []string) {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
-	file := fs.String("identity", "identity.json", "identity file")
+	stateFile := fs.String("state", "", "public signed identity state file")
+	identityFile := fs.String("identity", "", "deprecated local identity file")
 	responseFile := fs.String("response", "response.json", "response file")
 	fs.Parse(args)
 
-	id := loadIdentity(*file)
 	var response types.ChallengeResponse
 	readJSON(*responseFile, &response)
-	fmt.Println(auth.VerifyChallenge(response, id.Document))
+
+	if *stateFile != "" {
+		state := loadSignedState(*stateFile)
+		fmt.Println(auth.VerifyChallenge(response, state.Document))
+		return
+	}
+	if *identityFile != "" {
+		fmt.Fprintln(os.Stderr, "warning: -identity is deprecated for verify; use -state with exported public state")
+		id := loadIdentity(*identityFile)
+		fmt.Println(auth.VerifyChallenge(response, id.Document))
+		return
+	}
+	must(fmt.Errorf("verify requires -state <public-state.json>; -identity is deprecated for local-only verification"))
 }
 
 func runPublish(args []string) {
@@ -381,6 +406,15 @@ func loadIdentity(path string) *identity.Identity {
 	id, err := identity.FromLocal(local)
 	must(err)
 	return id
+}
+
+func loadSignedState(path string) types.SignedIdentityState {
+	data, err := os.ReadFile(path)
+	must(err)
+	state, err := identity.UnmarshalSignedState(data)
+	must(err)
+	must(identity.VerifyState(state))
+	return state
 }
 
 func saveIdentity(path string, id *identity.Identity) {

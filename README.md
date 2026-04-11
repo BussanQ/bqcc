@@ -173,10 +173,13 @@ go run ./cmd/node revoke-device -identity alice.json -key-id <deviceKeyId> -reas
 ### 6. challenge-response
 
 ```bash
+go run ./cmd/node export-state -identity alice.json -out alice-state.json
 go run ./cmd/node challenge -id "did:p2p:..." -out challenge.json
 go run ./cmd/node respond -identity alice.json -challenge challenge.json -out response.json
-go run ./cmd/node verify -identity alice.json -response response.json
+go run ./cmd/node verify -state alice-state.json -response response.json
 ```
+
+`alice.json` 是本地私有身份文件，不应该交给验证方；验证方使用公开的 `alice-state.json` 验证 response。
 
 显式指定设备 key：
 
@@ -229,6 +232,7 @@ go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 
 - `create`
 - `show`
+- `export-state`
 - `keys`
 - `add-memory`
 - `show-memory`
@@ -257,7 +261,17 @@ go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 注意：
 - 当前原型仍把私钥明文保存在本地 JSON 中
 - 这是为了原型验证，不是生产做法
-- 不要把这些文件提交到公开仓库
+- 不要把这些文件提交到公开仓库，也不要发给验证方
+
+### `alice-state.json`
+
+通过 `export-state` 导出的公开签名身份状态，包含：
+- identity document
+- identity events
+
+说明：
+- 不包含 `localKeys` 或私钥
+- 验证方可用它先回放验证身份状态，再验证 challenge response
 
 ### `<memoryCID>.json`
 

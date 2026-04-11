@@ -25,6 +25,40 @@ func TestChallengeResponseVerification(t *testing.T) {
 	}
 }
 
+func TestChallengeResponseVerificationWithPublicState(t *testing.T) {
+	id, err := identity.New("alice")
+	if err != nil {
+		t.Fatalf("new identity: %v", err)
+	}
+	state := id.SignedState()
+	if err := identity.VerifyState(state); err != nil {
+		t.Fatalf("verify public state: %v", err)
+	}
+	challenge, err := NewChallenge(id.Document.ID, time.Minute)
+	if err != nil {
+		t.Fatalf("new challenge: %v", err)
+	}
+	response, err := SignChallenge(challenge, id.DeviceKeyID(), id)
+	if err != nil {
+		t.Fatalf("sign challenge: %v", err)
+	}
+	if !VerifyChallenge(response, state.Document) {
+		t.Fatalf("expected challenge verification with public state to succeed")
+	}
+}
+
+func TestTamperedPublicStateFailsVerification(t *testing.T) {
+	id, err := identity.New("alice")
+	if err != nil {
+		t.Fatalf("new identity: %v", err)
+	}
+	state := id.SignedState()
+	state.Document.ID = state.Document.ID + "-tampered"
+	if err := identity.VerifyState(state); err == nil {
+		t.Fatalf("expected tampered public state verification to fail")
+	}
+}
+
 func TestSignChallengeRejectsRevokedDevice(t *testing.T) {
 	id, err := identity.New("alice")
 	if err != nil {

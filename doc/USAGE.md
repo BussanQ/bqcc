@@ -34,6 +34,7 @@ mkdir -p bq
 
 - `create`
 - `show`
+- `export-state`
 - `keys`
 - `add-memory`
 - `show-memory`
@@ -260,10 +261,18 @@ go run ./cmd/node respond -identity bq/identity.json -challenge bq/challenge.jso
 go run ./cmd/node respond -identity bq/identity.json -challenge bq/challenge.json -signer-key-id <deviceKeyId> -out bq/response.json
 ```
 
-### 9.3 验证 response
+### 9.3 导出公开身份状态
 
 ```bash
-go run ./cmd/node verify -identity bq/identity.json -response bq/response.json
+go run ./cmd/node export-state -identity bq/identity.json -out bq/state.json
+```
+
+`bq/identity.json` 是本地私有文件，不应该发给验证方。验证方只需要公开的 `bq/state.json`。
+
+### 9.4 验证 response
+
+```bash
+go run ./cmd/node verify -state bq/state.json -response bq/response.json
 ```
 
 输出为：
@@ -271,13 +280,14 @@ go run ./cmd/node verify -identity bq/identity.json -response bq/response.json
 - `true`：验证通过
 - `false`：验证失败
 
-### 9.4 常见失败原因
+### 9.5 常见失败原因
 
 - challenge 已过期
 - `signer-key-id` 对应的 key 已被撤销
 - 用了不是 device role 的 key
 - 响应文件与 challenge 不匹配
-- 本地身份文件被手工改坏
+- response 的 identity 与 `state.document.id` 不匹配
+- 公开 signed state 被手工改坏，事件链验证失败
 
 ## 10. root rotate
 
@@ -442,9 +452,10 @@ go run ./cmd/node add-device -identity bq/identity.json -label phone
 ### 13.5 跑 challenge-response
 
 ```bash
+go run ./cmd/node export-state -identity bq/identity.json -out bq/state.json
 go run ./cmd/node challenge -id "did:p2p:..." -out bq/challenge.json
 go run ./cmd/node respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
-go run ./cmd/node verify -identity bq/identity.json -response bq/response.json
+go run ./cmd/node verify -state bq/state.json -response bq/response.json
 ```
 
 ### 13.6 rotate root
@@ -473,6 +484,10 @@ go run ./cmd/node resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
 
 本地身份文件，包含私钥，不能公开。
 
+### `bq/state.json`
+
+通过 `export-state` 导出的公开 signed identity state，包含 document 和 events，不包含 `localKeys` 或私钥。验证方可以使用它验证 challenge response。
+
 ### `bq/challenge.json`
 
 challenge 请求文件。
@@ -499,10 +514,11 @@ attestation 对象文件。
 ## 15. 安全建议
 
 1. 不要公开 `identity.json` 或 `show` 输出。
-2. 不要把 `bq/*.json` 提交到公开仓库。
-3. private memory 文件虽然不含明文，但本地身份文件里有解密私钥，二者应一起保护。
-4. 不要手工修改 identity JSON；事件签名和 canonical 结构很容易因此失效。
-5. 做外部演示时，优先新建一个演示身份，不要直接拿长期使用的本地身份文件演示。
+2. 验证方使用 `export-state` 导出的公开 state，不要索要本地身份文件。
+3. 不要把 `bq/*.json` 提交到公开仓库。
+4. private memory 文件虽然不含明文，但本地身份文件里有解密私钥，二者应一起保护。
+5. 不要手工修改 identity JSON；事件签名和 canonical 结构很容易因此失效。
+6. 做外部演示时，优先新建一个演示身份，不要直接拿长期使用的本地身份文件演示。
 
 ## 16. 当前已知限制
 

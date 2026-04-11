@@ -82,6 +82,7 @@ If you touch auth:
 - ensure expired challenges fail verification
 - do not rely on a central auth database for identity truth
 - signer selection must honor the requested active device key
+- verifier-side challenge verification must consume verified public `SignedIdentityState`, not local private identity files
 
 If you touch P2P:
 - keep identity/state verification separate from transport

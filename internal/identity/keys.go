@@ -98,6 +98,17 @@ func UnmarshalLocal(data []byte) (LocalIdentity, error) {
 	return local, nil
 }
 
+func UnmarshalSignedState(data []byte) (types.SignedIdentityState, error) {
+	var state types.SignedIdentityState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return state, err
+	}
+	for idx := range state.Events {
+		normalizeEventPayload(&state.Events[idx])
+	}
+	return state, nil
+}
+
 func normalizeEventPayload(event *types.IdentityEvent) {
 	if event == nil || event.Payload == nil {
 		return
