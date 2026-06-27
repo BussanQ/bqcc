@@ -196,6 +196,11 @@ func (s *Server) security(next http.Handler) http.Handler {
 		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/advanced/") || r.URL.Path == "/notes" || r.URL.Path == "/backup" {
 			w.Header().Set("Cache-Control", "no-store")
 		}
+		// Embedded CSS/JS carry a zero modtime, so without this the browser keeps
+		// serving a stale copy after a rebuild. Always revalidate static assets.
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
