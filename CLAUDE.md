@@ -30,6 +30,7 @@ This repository is a Go prototype for a decentralized identity system:
 - `internal/auth/`: challenge-response signing and verification
 - `internal/attestation/`: attestation creation, signing, verification
 - `internal/p2p/`: libp2p resolver for state/object exchange
+- `internal/storage/`: shared filesystem helpers (JSON read/write, local identity load/save, loading referenced objects into a resolver), used by the CLI and the service layer
 - `internal/app/`: application service layer shared by user interfaces (incl. `SelfCheck`, `ListNotes`, passphrase `ExportBackup`/`ImportBackup`)
 - `internal/web/`: localhost web console — a consumer-facing **simple mode** at the root plus the full protocol **advanced console** under `/advanced`; handlers, templates, static assets, and a server-side `/api/qr` PNG endpoint
 - `internal/cli/`: node/web subcommand implementations behind the unified entrypoint

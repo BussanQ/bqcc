@@ -49,13 +49,7 @@ func SignChallenge(challenge types.Challenge, signerKeyID string, identityState 
 	if err != nil {
 		return types.ChallengeResponse{}, err
 	}
-	payload := map[string]interface{}{
-		"identityId": challenge.IdentityID,
-		"nonce":      challenge.Nonce,
-		"issuedAt":   challenge.IssuedAt.Format(time.RFC3339Nano),
-		"expiresAt":  challenge.ExpiresAt.Format(time.RFC3339Nano),
-	}
-	encoded, err := icrypto.CanonicalJSON(payload)
+	encoded, err := icrypto.CanonicalJSON(challengePayload(challenge))
 	if err != nil {
 		return types.ChallengeResponse{}, err
 	}
@@ -87,17 +81,22 @@ func VerifyChallenge(response types.ChallengeResponse, doc types.IdentityDocumen
 	if err != nil {
 		return false
 	}
-	payload := map[string]interface{}{
-		"identityId": response.Challenge.IdentityID,
-		"nonce":      response.Challenge.Nonce,
-		"issuedAt":   response.Challenge.IssuedAt.Format(time.RFC3339Nano),
-		"expiresAt":  response.Challenge.ExpiresAt.Format(time.RFC3339Nano),
-	}
-	encoded, err := icrypto.CanonicalJSON(payload)
+	encoded, err := icrypto.CanonicalJSON(challengePayload(response.Challenge))
 	if err != nil {
 		return false
 	}
 	return icrypto.VerifyBytes(pub, encoded, response.Signature)
+}
+
+// challengePayload builds the canonical pre-image signed/verified for a
+// challenge. Shared by SignChallenge and VerifyChallenge.
+func challengePayload(challenge types.Challenge) map[string]interface{} {
+	return map[string]interface{}{
+		"identityId": challenge.IdentityID,
+		"nonce":      challenge.Nonce,
+		"issuedAt":   challenge.IssuedAt.Format(time.RFC3339Nano),
+		"expiresAt":  challenge.ExpiresAt.Format(time.RFC3339Nano),
+	}
 }
 
 func identityErr(message string) error {

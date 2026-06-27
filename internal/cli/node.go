@@ -15,6 +15,7 @@ import (
 	"github.com/example/decentid/internal/identity"
 	"github.com/example/decentid/internal/memory"
 	"github.com/example/decentid/internal/p2p"
+	"github.com/example/decentid/internal/storage"
 	"github.com/example/decentid/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -356,7 +357,7 @@ func runPublish(args []string) {
 
 	state := id.SignedState()
 	must(resolver.PublishState(ctx, state))
-	storeReferencedObjects(resolver, *file, state, *includeAttestations)
+	storage.StoreReferencedObjects(resolver, *file, state, *includeAttestations)
 	fmt.Println(strings.Join(resolver.AddrStrings(), "\n"))
 	<-ctx.Done()
 }
@@ -381,39 +382,8 @@ func runResolve(args []string) {
 	printJSON(state)
 }
 
-func storeReferencedObjects(resolver *p2p.Resolver, identityFile string, state types.SignedIdentityState, includeAttestations bool) {
-	baseDir := filepath.Dir(identityFile)
-	if state.Document.PublicMemoryRoot != "" {
-		manifestFile := filepath.Join(baseDir, state.Document.PublicMemoryRoot+".json")
-		if data, err := os.ReadFile(manifestFile); err == nil {
-			resolver.StoreObject(state.Document.PublicMemoryRoot, data)
-			var manifest types.MemoryManifest
-			if err := json.Unmarshal(data, &manifest); err == nil {
-				for _, cid := range manifest.Items {
-					memoryFile := filepath.Join(baseDir, cid+".json")
-					if payload, err := os.ReadFile(memoryFile); err == nil {
-						resolver.StoreObject(cid, payload)
-					}
-				}
-			}
-		}
-	}
-	if includeAttestations {
-		for _, cid := range state.Document.AttestationRefs {
-			attFile := filepath.Join(baseDir, cid+".json")
-			if data, err := os.ReadFile(attFile); err == nil {
-				resolver.StoreObject(cid, data)
-			}
-		}
-	}
-}
-
 func loadIdentity(path string) *identity.Identity {
-	data, err := os.ReadFile(path)
-	must(err)
-	local, err := identity.UnmarshalLocal(data)
-	must(err)
-	id, err := identity.FromLocal(local)
+	id, err := storage.LoadIdentity(path)
 	must(err)
 	return id
 }
@@ -428,21 +398,15 @@ func loadSignedState(path string) types.SignedIdentityState {
 }
 
 func saveIdentity(path string, id *identity.Identity) {
-	data, err := identity.MarshalLocal(id.ExportLocal())
-	must(err)
-	must(os.WriteFile(path, data, 0o600))
+	must(storage.SaveIdentity(path, id))
 }
 
 func readJSON(path string, out interface{}) {
-	data, err := os.ReadFile(path)
-	must(err)
-	must(json.Unmarshal(data, out))
+	must(storage.ReadJSON(path, out))
 }
 
 func writeJSON(path string, value interface{}) {
-	data, err := json.MarshalIndent(value, "", "  ")
-	must(err)
-	must(os.WriteFile(path, data, 0o600))
+	must(storage.WriteJSON(path, value))
 }
 
 func printJSON(value interface{}) {

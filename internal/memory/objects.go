@@ -150,7 +150,9 @@ func extractCanonicalStringField(plaintext []byte, field string) (string, bool) 
 	return "", false
 }
 
-func SignObject(obj *types.MemoryObject, priv ed25519.PrivateKey) error {
+// objectSignaturePayload builds the canonical pre-image signed/verified for a
+// memory object. Shared by SignObject and VerifyObject so the two can never drift.
+func objectSignaturePayload(obj types.MemoryObject) map[string]interface{} {
 	payload := map[string]interface{}{
 		"cid":         obj.CID,
 		"type":        obj.Type,
@@ -165,7 +167,11 @@ func SignObject(obj *types.MemoryObject, priv ed25519.PrivateKey) error {
 	if obj.Encryption != nil {
 		payload["encryption"] = map[string]interface{}{"algorithm": obj.Encryption.Algorithm, "recipientKeyId": obj.Encryption.RecipientKeyID, "ephemeralPublicKey": obj.Encryption.EphemeralPublicKey, "wrappedKey": obj.Encryption.WrappedKey, "wrappedKeyNonce": obj.Encryption.WrappedKeyNonce, "cipherNonce": obj.Encryption.CipherNonce}
 	}
-	encoded, err := icrypto.CanonicalJSON(payload)
+	return payload
+}
+
+func SignObject(obj *types.MemoryObject, priv ed25519.PrivateKey) error {
+	encoded, err := icrypto.CanonicalJSON(objectSignaturePayload(*obj))
 	if err != nil {
 		return err
 	}
@@ -174,21 +180,7 @@ func SignObject(obj *types.MemoryObject, priv ed25519.PrivateKey) error {
 }
 
 func VerifyObject(obj types.MemoryObject, pub ed25519.PublicKey) bool {
-	payload := map[string]interface{}{
-		"cid":         obj.CID,
-		"type":        obj.Type,
-		"createdAt":   obj.CreatedAt.Format(time.RFC3339Nano),
-		"contentHash": obj.ContentHash,
-		"payload":     obj.Payload,
-		"ciphertext":  obj.Ciphertext,
-		"visibility":  obj.Visibility,
-		"references":  obj.References,
-		"metadata":    obj.Metadata,
-	}
-	if obj.Encryption != nil {
-		payload["encryption"] = map[string]interface{}{"algorithm": obj.Encryption.Algorithm, "recipientKeyId": obj.Encryption.RecipientKeyID, "ephemeralPublicKey": obj.Encryption.EphemeralPublicKey, "wrappedKey": obj.Encryption.WrappedKey, "wrappedKeyNonce": obj.Encryption.WrappedKeyNonce, "cipherNonce": obj.Encryption.CipherNonce}
-	}
-	encoded, err := icrypto.CanonicalJSON(payload)
+	encoded, err := icrypto.CanonicalJSON(objectSignaturePayload(obj))
 	if err != nil {
 		return false
 	}
@@ -238,9 +230,12 @@ func ManifestCID(manifest types.MemoryManifest) (string, error) {
 	return icrypto.HashString("manifest:" + rootHash), nil
 }
 
+func manifestSignaturePayload(manifest types.MemoryManifest) map[string]interface{} {
+	return map[string]interface{}{"version": manifest.Version, "cid": manifest.CID, "createdAt": manifest.CreatedAt.Format(time.RFC3339Nano), "visibility": manifest.Visibility, "items": manifest.Items, "rootHash": manifest.RootHash}
+}
+
 func SignManifest(manifest *types.MemoryManifest, priv ed25519.PrivateKey) error {
-	payload := map[string]interface{}{"version": manifest.Version, "cid": manifest.CID, "createdAt": manifest.CreatedAt.Format(time.RFC3339Nano), "visibility": manifest.Visibility, "items": manifest.Items, "rootHash": manifest.RootHash}
-	encoded, err := icrypto.CanonicalJSON(payload)
+	encoded, err := icrypto.CanonicalJSON(manifestSignaturePayload(*manifest))
 	if err != nil {
 		return err
 	}
@@ -249,8 +244,7 @@ func SignManifest(manifest *types.MemoryManifest, priv ed25519.PrivateKey) error
 }
 
 func VerifyManifest(manifest types.MemoryManifest, pub ed25519.PublicKey) bool {
-	payload := map[string]interface{}{"version": manifest.Version, "cid": manifest.CID, "createdAt": manifest.CreatedAt.Format(time.RFC3339Nano), "visibility": manifest.Visibility, "items": manifest.Items, "rootHash": manifest.RootHash}
-	encoded, err := icrypto.CanonicalJSON(payload)
+	encoded, err := icrypto.CanonicalJSON(manifestSignaturePayload(manifest))
 	if err != nil {
 		return false
 	}

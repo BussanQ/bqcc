@@ -18,6 +18,7 @@ import (
 	"github.com/example/decentid/internal/identity"
 	"github.com/example/decentid/internal/memory"
 	"github.com/example/decentid/internal/p2p"
+	"github.com/example/decentid/internal/storage"
 	"github.com/example/decentid/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
@@ -186,7 +187,7 @@ func (s *Service) CreateIdentity(displayName, outPath string) (CreateIdentityRes
 	if err != nil {
 		return CreateIdentityResult{}, err
 	}
-	if err := saveIdentity(outPath, id); err != nil {
+	if err := storage.SaveIdentity(outPath, id); err != nil {
 		return CreateIdentityResult{}, err
 	}
 	s.setIdentityPath(outPath)
@@ -217,7 +218,7 @@ func (s *Service) ExportState(outPath string) (ExportStateResult, error) {
 	if err := identity.VerifyState(state); err != nil {
 		return ExportStateResult{}, err
 	}
-	if err := writeJSON(outPath, state); err != nil {
+	if err := storage.WriteJSON(outPath, state); err != nil {
 		return ExportStateResult{}, err
 	}
 	return ExportStateResult{OutFile: outPath, State: state}, nil
@@ -279,17 +280,17 @@ func (s *Service) AddMemory(kind, payload string, visibility types.Visibility) (
 	} else if err := id.AddPublicMemoryRoot(manifest.CID); err != nil {
 		return MemoryResult{}, err
 	}
-	if err := saveIdentity(identityPath, id); err != nil {
+	if err := storage.SaveIdentity(identityPath, id); err != nil {
 		return MemoryResult{}, err
 	}
 
 	baseDir := filepath.Dir(identityPath)
 	objectFile := filepath.Join(baseDir, obj.CID+".json")
 	manifestFile := filepath.Join(baseDir, manifest.CID+".json")
-	if err := writeJSON(objectFile, obj); err != nil {
+	if err := storage.WriteJSON(objectFile, obj); err != nil {
 		return MemoryResult{}, err
 	}
-	if err := writeJSON(manifestFile, manifest); err != nil {
+	if err := storage.WriteJSON(manifestFile, manifest); err != nil {
 		return MemoryResult{}, err
 	}
 	return MemoryResult{ObjectCID: obj.CID, ManifestCID: manifest.CID, ObjectFile: objectFile, ManifestFile: manifestFile, Visibility: visibility, Object: obj, Manifest: manifest}, nil
@@ -304,7 +305,7 @@ func (s *Service) ShowMemory(memoryFile string) (ShowMemoryResult, error) {
 		return ShowMemoryResult{}, err
 	}
 	var obj types.MemoryObject
-	if err := readJSON(memoryFile, &obj); err != nil {
+	if err := storage.ReadJSON(memoryFile, &obj); err != nil {
 		return ShowMemoryResult{}, err
 	}
 	result := ShowMemoryResult{MemoryFile: memoryFile, Visibility: obj.Visibility, Object: obj}
@@ -358,7 +359,7 @@ func (s *Service) ListNotes() ([]NoteSummary, error) {
 		}
 		full := filepath.Join(baseDir, entry.Name())
 		var obj types.MemoryObject
-		if err := readJSON(full, &obj); err != nil {
+		if err := storage.ReadJSON(full, &obj); err != nil {
 			continue
 		}
 		// A memory object always carries a CID, a type, and either a plaintext
@@ -442,7 +443,7 @@ func (s *Service) AddDevice(label string) (types.KeyRecord, error) {
 	if err != nil {
 		return types.KeyRecord{}, err
 	}
-	return record, saveIdentity(path, id)
+	return record, storage.SaveIdentity(path, id)
 }
 
 func (s *Service) RevokeDevice(keyID, reason string) (VerificationResult, error) {
@@ -456,7 +457,7 @@ func (s *Service) RevokeDevice(keyID, reason string) (VerificationResult, error)
 	if err := id.RevokeDevice(keyID, reason); err != nil {
 		return VerificationResult{}, err
 	}
-	if err := saveIdentity(path, id); err != nil {
+	if err := storage.SaveIdentity(path, id); err != nil {
 		return VerificationResult{}, err
 	}
 	return VerificationResult{Valid: true, Message: "device revoked"}, nil
@@ -474,7 +475,7 @@ func (s *Service) RotateRoot(label string) (types.KeyRecord, error) {
 	if err != nil {
 		return types.KeyRecord{}, err
 	}
-	return record, saveIdentity(path, id)
+	return record, storage.SaveIdentity(path, id)
 }
 
 func (s *Service) CreateChallenge(identityID string, ttl time.Duration) (ChallengeResult, error) {
@@ -543,7 +544,7 @@ func (s *Service) IssueAttestation(subjectID, claimType, claimValue, evidenceRef
 		return AttestationResult{}, err
 	}
 	if strings.TrimSpace(outPath) != "" {
-		if err := writeJSON(outPath, att); err != nil {
+		if err := storage.WriteJSON(outPath, att); err != nil {
 			return AttestationResult{}, err
 		}
 	}
@@ -573,13 +574,13 @@ func (s *Service) AttachAttestation(att types.Attestation) (AttachAttestationRes
 		return AttachAttestationResult{}, err
 	}
 	cidPath := filepath.Join(filepath.Dir(path), att.CID+".json")
-	if err := writeJSON(cidPath, att); err != nil {
+	if err := storage.WriteJSON(cidPath, att); err != nil {
 		return AttachAttestationResult{}, err
 	}
 	if err := id.AttachAttestationRef(att.CID); err != nil {
 		return AttachAttestationResult{}, err
 	}
-	if err := saveIdentity(path, id); err != nil {
+	if err := storage.SaveIdentity(path, id); err != nil {
 		return AttachAttestationResult{}, err
 	}
 	return AttachAttestationResult{CID: att.CID, File: cidPath}, nil
@@ -608,7 +609,7 @@ func (s *Service) StartPublish(listenAddr string, wait time.Duration, includeAtt
 		cancel()
 		return PublishResult{}, err
 	}
-	stored := storeReferencedObjects(resolver, path, state, includeAttestations)
+	stored := storage.StoreReferencedObjects(resolver, path, state, includeAttestations)
 	addrs := resolver.AddrStrings()
 	expiresAt := time.Now().UTC().Add(wait)
 
@@ -705,75 +706,11 @@ func ParseAttestation(data string) (types.Attestation, error) {
 
 func (s *Service) loadIdentityWithPath() (*identity.Identity, string, error) {
 	path := s.IdentityPath()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, path, err
-	}
-	local, err := identity.UnmarshalLocal(data)
-	if err != nil {
-		return nil, path, err
-	}
-	id, err := identity.FromLocal(local)
+	id, err := storage.LoadIdentity(path)
 	if err != nil {
 		return nil, path, err
 	}
 	return id, path, nil
-}
-
-func saveIdentity(path string, id *identity.Identity) error {
-	data, err := identity.MarshalLocal(id.ExportLocal())
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
-}
-
-func readJSON(path string, out interface{}) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(data, out)
-}
-
-func writeJSON(path string, value interface{}) error {
-	data, err := json.MarshalIndent(value, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o600)
-}
-
-func storeReferencedObjects(resolver *p2p.Resolver, identityFile string, state types.SignedIdentityState, includeAttestations bool) []string {
-	baseDir := filepath.Dir(identityFile)
-	stored := []string{}
-	if state.Document.PublicMemoryRoot != "" {
-		manifestFile := filepath.Join(baseDir, state.Document.PublicMemoryRoot+".json")
-		if data, err := os.ReadFile(manifestFile); err == nil {
-			resolver.StoreObject(state.Document.PublicMemoryRoot, data)
-			stored = append(stored, state.Document.PublicMemoryRoot)
-			var manifest types.MemoryManifest
-			if err := json.Unmarshal(data, &manifest); err == nil {
-				for _, cid := range manifest.Items {
-					memoryFile := filepath.Join(baseDir, cid+".json")
-					if payload, err := os.ReadFile(memoryFile); err == nil {
-						resolver.StoreObject(cid, payload)
-						stored = append(stored, cid)
-					}
-				}
-			}
-		}
-	}
-	if includeAttestations {
-		for _, cid := range state.Document.AttestationRefs {
-			attFile := filepath.Join(baseDir, cid+".json")
-			if data, err := os.ReadFile(attFile); err == nil {
-				resolver.StoreObject(cid, data)
-				stored = append(stored, cid)
-			}
-		}
-	}
-	return stored
 }
 
 func buildSummary(path string, id *identity.Identity) LocalSummary {

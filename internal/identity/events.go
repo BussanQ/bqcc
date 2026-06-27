@@ -83,17 +83,22 @@ func New(displayName string) (*Identity, error) {
 	}, nil
 }
 
-func NewEvent(eventType types.EventType, identityID, prevEventID, signerKeyID string, payload map[string]interface{}, priv ed25519.PrivateKey) (types.IdentityEvent, error) {
-	now := time.Now().UTC()
-	base := map[string]interface{}{
+// eventSigningBase builds the canonical pre-image signed/verified for an
+// identity event. Shared by NewEvent and VerifyEvent so they cannot drift.
+func eventSigningBase(eventType types.EventType, identityID, prevEventID, signerKeyID string, timestamp time.Time, payload map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
 		"type":        eventType,
 		"identityId":  identityID,
 		"prevEventId": prevEventID,
 		"signerKeyId": signerKeyID,
-		"timestamp":   now.Format(time.RFC3339Nano),
+		"timestamp":   timestamp.Format(time.RFC3339Nano),
 		"payload":     payload,
 	}
-	encoded, err := icrypto.CanonicalJSON(base)
+}
+
+func NewEvent(eventType types.EventType, identityID, prevEventID, signerKeyID string, payload map[string]interface{}, priv ed25519.PrivateKey) (types.IdentityEvent, error) {
+	now := time.Now().UTC()
+	encoded, err := icrypto.CanonicalJSON(eventSigningBase(eventType, identityID, prevEventID, signerKeyID, now, payload))
 	if err != nil {
 		return types.IdentityEvent{}, err
 	}
@@ -103,15 +108,7 @@ func NewEvent(eventType types.EventType, identityID, prevEventID, signerKeyID st
 }
 
 func VerifyEvent(event types.IdentityEvent, pub ed25519.PublicKey) bool {
-	base := map[string]interface{}{
-		"type":        event.Type,
-		"identityId":  event.IdentityID,
-		"prevEventId": event.PrevEventID,
-		"signerKeyId": event.SignerKeyID,
-		"timestamp":   event.Timestamp.Format(time.RFC3339Nano),
-		"payload":     event.Payload,
-	}
-	encoded, err := icrypto.CanonicalJSON(base)
+	encoded, err := icrypto.CanonicalJSON(eventSigningBase(event.Type, event.IdentityID, event.PrevEventID, event.SignerKeyID, event.Timestamp, event.Payload))
 	if err != nil {
 		return false
 	}
