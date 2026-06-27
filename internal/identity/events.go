@@ -318,10 +318,16 @@ func ReplayState(events []types.IdentityEvent) (types.IdentityDocument, error) {
 			if !VerifyEvent(event, pub) {
 				return types.IdentityDocument{}, fmt.Errorf("invalid signature for event %s", event.ID)
 			}
+			if event.SignerKeyID != doc.RootKeyID {
+				return types.IdentityDocument{}, fmt.Errorf("event %s not signed by active root key", event.ID)
+			}
 			continue
 		}
 		if event.PrevEventID != events[idx-1].ID {
 			return types.IdentityDocument{}, fmt.Errorf("broken event chain at %s", event.ID)
+		}
+		if event.Timestamp.Before(events[idx-1].Timestamp) {
+			return types.IdentityDocument{}, fmt.Errorf("non-monotonic timestamp at event %s", event.ID)
 		}
 		pub, err := ResolveKey(doc, event.SignerKeyID)
 		if err != nil {
@@ -329,6 +335,11 @@ func ReplayState(events []types.IdentityEvent) (types.IdentityDocument, error) {
 		}
 		if !VerifyEvent(event, pub) {
 			return types.IdentityDocument{}, fmt.Errorf("invalid signature for event %s", event.ID)
+		}
+		// Management events must be signed by the active root key as it stands
+		// before this event is applied (RotateRootKey is signed by the old root).
+		if event.SignerKeyID != doc.RootKeyID {
+			return types.IdentityDocument{}, fmt.Errorf("event %s not signed by active root key", event.ID)
 		}
 		if err := applyEvent(&doc, event); err != nil {
 			return types.IdentityDocument{}, err
@@ -354,6 +365,13 @@ func initDocumentFromCreate(event types.IdentityEvent) (types.IdentityDocument, 
 	profileMap, ok := event.Payload["profile"].(map[string]interface{})
 	if !ok {
 		return types.IdentityDocument{}, errors.New("missing profile in create event")
+	}
+	rootPub, err := icrypto.ParsePublicKey(root.PublicKey)
+	if err != nil {
+		return types.IdentityDocument{}, fmt.Errorf("invalid root public key: %w", err)
+	}
+	if icrypto.DIDFromPublicKey(rootPub) != event.IdentityID {
+		return types.IdentityDocument{}, errors.New("identity id does not match root key")
 	}
 	profile := profileFromPayload(profileMap)
 	doc := types.IdentityDocument{ID: event.IdentityID, Version: "2", CreatedAt: event.Timestamp, UpdatedAt: event.Timestamp, RootKeyID: root.ID, ActiveKeys: []types.KeyRecord{root, device, encryption}, Profile: profile, LatestEventID: event.ID}

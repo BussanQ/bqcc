@@ -29,6 +29,49 @@ func NewObject(kind string, payload string, visibility types.Visibility, refs []
 	return types.MemoryObject{CID: cid, Type: kind, CreatedAt: now, ContentHash: contentHash, Payload: payload, Visibility: visibility, References: refs, Metadata: metadata}, nil
 }
 
+// objectCanonicalHash hashes the canonical pre-image of a memory object (the
+// same subset used to derive its CID). Public objects hash the plaintext
+// payload; private objects hash the ciphertext envelope.
+func objectCanonicalHash(obj types.MemoryObject) (string, error) {
+	var base map[string]interface{}
+	if obj.Encryption != nil {
+		base = map[string]interface{}{
+			"type":       obj.Type,
+			"createdAt":  obj.CreatedAt.Format(time.RFC3339Nano),
+			"ciphertext": obj.Ciphertext,
+			"encryption": map[string]interface{}{"algorithm": obj.Encryption.Algorithm, "recipientKeyId": obj.Encryption.RecipientKeyID, "ephemeralPublicKey": obj.Encryption.EphemeralPublicKey, "cipherNonce": obj.Encryption.CipherNonce},
+			"visibility": obj.Visibility,
+			"references": obj.References,
+			"metadata":   obj.Metadata,
+		}
+	} else {
+		base = map[string]interface{}{
+			"type":       obj.Type,
+			"createdAt":  obj.CreatedAt.Format(time.RFC3339Nano),
+			"payload":    obj.Payload,
+			"visibility": obj.Visibility,
+			"references": obj.References,
+			"metadata":   obj.Metadata,
+		}
+	}
+	encoded, err := icrypto.CanonicalJSON(base)
+	if err != nil {
+		return "", err
+	}
+	return icrypto.HashBytes(encoded), nil
+}
+
+// ObjectCID recomputes the content-addressed CID of a memory object. It is the
+// single source of truth shared by the constructors and by integrity checks on
+// fetched objects.
+func ObjectCID(obj types.MemoryObject) (string, error) {
+	inner, err := objectCanonicalHash(obj)
+	if err != nil {
+		return "", err
+	}
+	return icrypto.HashString("memory:" + inner), nil
+}
+
 func NewPrivateObject(kind string, payload string, recipientKeyID string, recipientPublicKey []byte, refs []string, metadata map[string]string) (types.MemoryObject, error) {
 	now := time.Now().UTC()
 	plaintextBase := map[string]interface{}{
@@ -53,22 +96,13 @@ func NewPrivateObject(kind string, payload string, recipientKeyID string, recipi
 		EphemeralPublicKey: icrypto.BytesString(ephemeralPublicKey),
 		CipherNonce:        icrypto.BytesString(nonce),
 	}
-	cipherBase := map[string]interface{}{
-		"type":       kind,
-		"createdAt":  now.Format(time.RFC3339Nano),
-		"ciphertext": icrypto.BytesString(ciphertext),
-		"encryption": map[string]interface{}{"algorithm": encryption.Algorithm, "recipientKeyId": encryption.RecipientKeyID, "ephemeralPublicKey": encryption.EphemeralPublicKey, "cipherNonce": encryption.CipherNonce},
-		"visibility": types.VisibilityPrivate,
-		"references": refs,
-		"metadata":   metadata,
-	}
-	encoded, err := icrypto.CanonicalJSON(cipherBase)
+	obj := types.MemoryObject{Type: kind, CreatedAt: now, ContentHash: icrypto.HashBytes(plaintext), Ciphertext: icrypto.BytesString(ciphertext), Encryption: encryption, Visibility: types.VisibilityPrivate, References: refs, Metadata: metadata}
+	inner, err := objectCanonicalHash(obj)
 	if err != nil {
 		return types.MemoryObject{}, err
 	}
-	contentHash := icrypto.HashBytes(plaintext)
-	cid := icrypto.HashString("memory:" + icrypto.HashBytes(encoded))
-	return types.MemoryObject{CID: cid, Type: kind, CreatedAt: now, ContentHash: contentHash, Ciphertext: icrypto.BytesString(ciphertext), Encryption: encryption, Visibility: types.VisibilityPrivate, References: refs, Metadata: metadata}, nil
+	obj.CID = icrypto.HashString("memory:" + inner)
+	return obj, nil
 }
 
 func DecryptObject(obj types.MemoryObject, recipientPrivateKey []byte) (string, error) {
@@ -170,19 +204,38 @@ func NewManifest(visibility types.Visibility, items []types.MemoryObject) (types
 		}
 		cids = append(cids, item.CID)
 	}
-	base := map[string]interface{}{
-		"version":    "1",
-		"createdAt":  now.Format(time.RFC3339Nano),
-		"visibility": visibility,
-		"items":      cids,
-	}
-	encoded, err := icrypto.CanonicalJSON(base)
+	manifest := types.MemoryManifest{Version: "1", CreatedAt: now, Visibility: visibility, Items: cids}
+	rootHash, err := manifestCanonicalHash(manifest)
 	if err != nil {
 		return types.MemoryManifest{}, err
 	}
-	rootHash := icrypto.HashBytes(encoded)
-	cid := icrypto.HashString("manifest:" + rootHash)
-	return types.MemoryManifest{Version: "1", CID: cid, CreatedAt: now, Visibility: visibility, Items: cids, RootHash: rootHash}, nil
+	manifest.RootHash = rootHash
+	manifest.CID = icrypto.HashString("manifest:" + rootHash)
+	return manifest, nil
+}
+
+func manifestCanonicalHash(manifest types.MemoryManifest) (string, error) {
+	base := map[string]interface{}{
+		"version":    manifest.Version,
+		"createdAt":  manifest.CreatedAt.Format(time.RFC3339Nano),
+		"visibility": manifest.Visibility,
+		"items":      manifest.Items,
+	}
+	encoded, err := icrypto.CanonicalJSON(base)
+	if err != nil {
+		return "", err
+	}
+	return icrypto.HashBytes(encoded), nil
+}
+
+// ManifestCID recomputes the content-addressed CID of a manifest. Shared by
+// NewManifest and by integrity checks on fetched objects.
+func ManifestCID(manifest types.MemoryManifest) (string, error) {
+	rootHash, err := manifestCanonicalHash(manifest)
+	if err != nil {
+		return "", err
+	}
+	return icrypto.HashString("manifest:" + rootHash), nil
 }
 
 func SignManifest(manifest *types.MemoryManifest, priv ed25519.PrivateKey) error {

@@ -386,8 +386,9 @@ go vet ./...
 - root rotation 后 DID 保持不变
 - revoked device 无法继续用于 challenge 签名
 - private memory 不暴露明文且可本地解密
-- attestation 签名与过期校验
+- attestation 签名、未生效（validFrom）与过期校验
 - P2P 远端 state / object 拉取
+- 验证层对抗性拒绝：伪造 DID（与 root 公钥不符）、由非 root key 签名的管理事件、回填时间戳、对端返回与 CID 不符的对象，均被拒绝
 
 ## 已知限制
 
