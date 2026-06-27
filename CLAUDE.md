@@ -32,8 +32,8 @@ This repository is a Go prototype for a decentralized identity system:
 - `internal/p2p/`: libp2p resolver for state/object exchange
 - `internal/app/`: application service layer shared by user interfaces
 - `internal/web/`: localhost web operation console handlers, templates, and static assets
-- `cmd/node/`: CLI prototype
-- `cmd/web/`: browser-based local operation console
+- `internal/cli/`: node/web subcommand implementations behind the unified entrypoint
+- `cmd/decentid/`: the single binary entrypoint (`web` subcommand plus all node subcommands)
 
 ## Implementation guidance
 

@@ -3,30 +3,30 @@
 
 <section class="split-layout">
   <div class="stack">
-    <form class="panel action-form" data-endpoint="/api/memory/add">
-      <span class="eyebrow">添加记忆</span>
+    <form class="panel action-form" data-endpoint="/api/memory/add" data-toast="记忆已写入" data-fill='[{"path":"objectFile","target":"#field-memory-file"}]'>
+      <div class="panel-head"><svg class="icon"><use href="#i-plus"/></svg><span class="eyebrow">添加记忆</span></div>
       <h2>写入签名记忆对象</h2>
       <p>公开记忆会进入 public root；私有记忆使用 X25519 + AES-GCM 加密并进入 private root。</p>
       <label>类型<input name="type" value="note"></label>
       <label>可见性<select name="visibility"><option value="public">公开</option><option value="private">私有加密</option></select></label>
       <label>内容<textarea name="payload" rows="5" placeholder="写入一段记忆内容"></textarea></label>
-      <button class="primary-button" type="submit">创建记忆</button>
+      <div class="form-actions"><button class="primary-button" type="submit"><svg class="icon"><use href="#i-plus"/></svg>创建记忆</button></div>
     </form>
 
-    <form class="panel action-form" data-endpoint="/api/memory/show" data-confirm="这会在浏览器中显示记忆明文；确认显示？">
-      <span class="eyebrow">显示记忆</span>
+    <form class="panel action-form" data-endpoint="/api/memory/show" data-confirm="这会在浏览器中显示记忆明文；确认显示？" data-toast="已解密记忆">
+      <div class="panel-head"><svg class="icon"><use href="#i-eye"/></svg><span class="eyebrow">显示记忆</span></div>
       <h2>显式解密 / 查看记忆</h2>
-      <p>私有记忆只有点击后才会显示明文。响应设置 no-store，避免浏览器缓存。</p>
-      <label>记忆对象文件<input name="memoryFile" placeholder="bafy...json"></label>
-      <button class="danger-button" type="submit">显示明文</button>
+      <p>私有记忆只有点击后才会显示明文。响应设置 no-store，避免浏览器缓存。创建记忆后会自动填入对象文件路径。</p>
+      <label>记忆对象文件<input id="field-memory-file" name="memoryFile" placeholder="bafy...json"></label>
+      <div class="form-actions"><button class="danger-button" type="submit"><svg class="icon"><use href="#i-eye"/></svg>显示明文</button></div>
     </form>
   </div>
 
   <aside class="panel sticky-panel encrypted-panel">
-    <span class="eyebrow">记忆根</span>
+    <div class="panel-head"><svg class="icon"><use href="#i-memory"/></svg><span class="eyebrow">记忆根</span></div>
     <dl class="detail-list">
-      <div><dt>公开 root</dt><dd><code>{{if .Summary.PublicMemoryRoot}}{{.Summary.PublicMemoryRoot}}{{else}}无{{end}}</code></dd></div>
-      <div><dt>私有 root</dt><dd><code>{{if .Summary.PrivateMemoryRoot}}{{.Summary.PrivateMemoryRoot}}{{else}}无{{end}}</code></dd></div>
+      <div><dt>公开 root</dt><dd><span class="copy-field"><code>{{if .Summary.PublicMemoryRoot}}{{short .Summary.PublicMemoryRoot}}{{else}}无{{end}}</code>{{if .Summary.PublicMemoryRoot}}<button class="copy-btn" type="button" data-copy-value="{{.Summary.PublicMemoryRoot}}" aria-label="复制公开 root"><svg class="icon"><use href="#i-copy"/></svg></button>{{end}}</span></dd></div>
+      <div><dt>私有 root</dt><dd><span class="copy-field"><code>{{if .Summary.PrivateMemoryRoot}}{{short .Summary.PrivateMemoryRoot}}{{else}}无{{end}}</code>{{if .Summary.PrivateMemoryRoot}}<button class="copy-btn" type="button" data-copy-value="{{.Summary.PrivateMemoryRoot}}" aria-label="复制私有 root"><svg class="icon"><use href="#i-copy"/></svg></button>{{end}}</span></dd></div>
     </dl>
     <p class="callout">发布时默认不会发布私有记忆对象；它们只是本地加密证据。</p>
   </aside>

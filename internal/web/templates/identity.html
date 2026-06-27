@@ -3,31 +3,33 @@
 
 <section class="split-layout">
   <div class="stack">
-    <form class="panel action-form" data-endpoint="/api/identity/create" data-confirm="创建新身份会写入本地 身份文件；如果路径相同会覆盖该文件。继续？">
-      <span class="eyebrow">创建身份</span>
+    <form class="panel action-form" data-endpoint="/api/identity/create" data-confirm="创建新身份会写入本地 身份文件；如果路径相同会覆盖该文件。继续？" data-toast="身份已创建">
+      <div class="panel-head"><svg class="icon"><use href="#i-plus"/></svg><span class="eyebrow">创建身份</span></div>
       <h2>创建本地私有身份</h2>
       <p>生成 root / device / encryption key，DID 从初始 root 公开 key 派生。</p>
       <label>显示名称<input name="displayName" placeholder="例如：Alice"></label>
       <label>输出文件<input name="outPath" value="{{.IdentityPath}}"></label>
-      <button class="primary-button" type="submit">创建身份</button>
+      <div class="form-actions"><button class="primary-button" type="submit"><svg class="icon"><use href="#i-plus"/></svg>创建身份</button></div>
     </form>
 
-    <form class="panel action-form" data-endpoint="/api/identity/export-state">
-      <span class="eyebrow">公开状态</span>
+    <form class="panel action-form" data-endpoint="/api/identity/export-state" data-toast="公开状态已导出">
+      <div class="panel-head"><svg class="icon"><use href="#i-globe"/></svg><span class="eyebrow">公开状态</span></div>
       <h2>导出验证方可用公开状态</h2>
       <p>公开状态只包含身份文档与事件链，不包含 localKeys 或私钥。</p>
       <label>输出文件<input name="outPath" placeholder="identity-state.json"></label>
-      <button class="primary-button" type="submit">导出公开状态</button>
-      <button class="ghost-button" type="button" data-fetch-json="/api/identity/public-state">查看当前公开状态</button>
+      <div class="form-actions">
+        <button class="primary-button" type="submit"><svg class="icon"><use href="#i-send"/></svg>导出公开状态</button>
+        <button class="ghost-button" type="button" data-fetch-json="/api/identity/public-state"><svg class="icon"><use href="#i-eye"/></svg>查看当前公开状态</button>
+      </div>
     </form>
   </div>
 
   <aside class="panel sticky-panel">
-    <span class="eyebrow">当前身份</span>
+    <div class="panel-head"><svg class="icon"><use href="#i-identity"/></svg><span class="eyebrow">当前身份</span></div>
     <h2>{{if .Summary.DisplayName}}{{.Summary.DisplayName}}{{else}}未命名{{end}}</h2>
     <dl class="detail-list">
-      <div><dt>DID</dt><dd><code>{{.Summary.DID}}</code></dd></div>
-      <div><dt>根 key</dt><dd><code>{{short .Summary.RootKeyID}}</code></dd></div>
+      <div><dt>DID</dt><dd><span class="copy-field"><code>{{short .Summary.DID}}</code>{{if .Summary.DID}}<button class="copy-btn" type="button" data-copy-value="{{.Summary.DID}}" aria-label="复制 DID"><svg class="icon"><use href="#i-copy"/></svg></button>{{end}}</span></dd></div>
+      <div><dt>根 key</dt><dd><span class="copy-field"><code>{{short .Summary.RootKeyID}}</code>{{if .Summary.RootKeyID}}<button class="copy-btn" type="button" data-copy-value="{{.Summary.RootKeyID}}" aria-label="复制根 key"><svg class="icon"><use href="#i-copy"/></svg></button>{{end}}</span></dd></div>
       <div><dt>最新事件</dt><dd><code>{{short .Summary.LatestEventID}}</code></dd></div>
       <div><dt>事件数</dt><dd>{{.Summary.EventCount}}</dd></div>
     </dl>
@@ -37,7 +39,7 @@
 <section class="panel">
   <div class="result-heading">
     <div>
-      <span class="eyebrow">已脱敏密钥清单</span>
+      <div class="panel-head"><svg class="icon"><use href="#i-key"/></svg><span class="eyebrow">已脱敏密钥清单</span></div>
       <h2>公开密钥与本地持有状态</h2>
     </div>
   </div>
@@ -45,12 +47,12 @@
     {{range .Summary.Keys}}
       <div class="key-row wide">
         <span class="badge {{if .RevokedAt.IsZero}}badge-public{{else}}badge-danger{{end}}">{{.Role}}</span>
-        <code>{{.ID}}</code>
-        <span>{{.Type}}</span>
-        {{if .PreferredRoot}}<span class="badge badge-local">首选 root</span>{{end}}
-        {{if .PreferredDevice}}<span class="badge badge-local">首选设备</span>{{end}}
-        {{if .PreferredEncryption}}<span class="badge badge-local">首选加密 key</span>{{end}}
-        {{if .HasLocalPrivateKey}}<span class="badge badge-warn">私钥已隐藏</span>{{end}}
+        <span class="copy-field"><code>{{short .ID}}</code><button class="copy-btn" type="button" data-copy-value="{{.ID}}" aria-label="复制 key ID"><svg class="icon"><use href="#i-copy"/></svg></button></span>
+        <span class="muted">{{.Type}}</span>
+        {{if .PreferredRoot}}<span class="badge badge-public">首选 root</span>{{end}}
+        {{if .PreferredDevice}}<span class="badge badge-public">首选设备</span>{{end}}
+        {{if .PreferredEncryption}}<span class="badge badge-public">首选加密 key</span>{{end}}
+        {{if .HasLocalPrivateKey}}<span class="badge badge-warn"><svg class="icon"><use href="#i-lock"/></svg>私钥已隐藏</span>{{end}}
       </div>
     {{else}}
       <p class="muted">创建身份后会显示密钥清单。</p>

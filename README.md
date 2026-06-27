@@ -116,8 +116,8 @@ attestation 的流转是：
 
 ## 代码结构
 
-- `cmd/node/`：CLI 入口
-- `cmd/web/`：本地浏览器操作台入口
+- `cmd/decentid/`：统一单二进制入口（`web` 子命令 + 全部 node 子命令）
+- `internal/cli/`：node / web 子命令的实现，供统一入口调用
 - `pkg/types/`：共享结构定义
 - `internal/crypto/`：Ed25519、X25519、哈希、canonical JSON
 - `internal/identity/`：身份创建、事件链、回放验证、本地 keyring
@@ -138,48 +138,73 @@ attestation 的流转是：
 go mod tidy
 ```
 
+## 构建单一二进制
+
+项目是纯 Go、无 CGO；Web 模板与静态资源通过 `go:embed` 打进二进制，运行时不依赖任何外部文件，因此可以编出一个自包含的单文件 `decentid`。
+
+```bash
+# 当前平台 -> dist/decentid[.exe]
+scripts/build.sh
+
+# 跨平台发布矩阵（linux/darwin/windows × amd64/arm64）-> dist/
+scripts/build.sh all
+
+# 或直接用 go build
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o decentid ./cmd/decentid
+```
+
+统一二进制用法：
+
+```bash
+decentid web -identity alice.json -addr 127.0.0.1:8080   # 启动本地操作台
+decentid create -name alice -out alice.json              # 其余子命令即原 CLI
+decentid version
+```
+
+下文示例中的 `go run ./cmd/decentid ...` 与已构建的 `decentid ...` 可互换。
+
 ## 快速开始
 
 ### 1. 创建身份
 
 ```bash
-go run ./cmd/node create -name alice -out alice.json
+go run ./cmd/decentid create -name alice -out alice.json
 ```
 
 ### 2. 查看身份
 
 ```bash
-go run ./cmd/node show -identity alice.json
+go run ./cmd/decentid show -identity alice.json
 ```
 
 ### 3. 添加 public memory
 
 ```bash
-go run ./cmd/node add-memory -identity alice.json -type note -payload "hello public"
+go run ./cmd/decentid add-memory -identity alice.json -type note -payload "hello public"
 ```
 
 ### 4. 添加 private memory
 
 ```bash
-go run ./cmd/node add-memory -identity alice.json -type note -payload "secret memory" -visibility private
-go run ./cmd/node show-memory -identity alice.json -memory <memoryCID>.json
+go run ./cmd/decentid add-memory -identity alice.json -type note -payload "secret memory" -visibility private
+go run ./cmd/decentid show-memory -identity alice.json -memory <memoryCID>.json
 ```
 
 ### 5. 添加 / 撤销设备
 
 ```bash
-go run ./cmd/node add-device -identity alice.json -label laptop
-go run ./cmd/node keys -identity alice.json
-go run ./cmd/node revoke-device -identity alice.json -key-id <deviceKeyId> -reason "lost"
+go run ./cmd/decentid add-device -identity alice.json -label laptop
+go run ./cmd/decentid keys -identity alice.json
+go run ./cmd/decentid revoke-device -identity alice.json -key-id <deviceKeyId> -reason "lost"
 ```
 
 ### 6. challenge-response
 
 ```bash
-go run ./cmd/node export-state -identity alice.json -out alice-state.json
-go run ./cmd/node challenge -id "did:p2p:..." -out challenge.json
-go run ./cmd/node respond -identity alice.json -challenge challenge.json -out response.json
-go run ./cmd/node verify -state alice-state.json -response response.json
+go run ./cmd/decentid export-state -identity alice.json -out alice-state.json
+go run ./cmd/decentid challenge -id "did:p2p:..." -out challenge.json
+go run ./cmd/decentid respond -identity alice.json -challenge challenge.json -out response.json
+go run ./cmd/decentid verify -state alice-state.json -response response.json
 ```
 
 `alice.json` 是本地私有身份文件，不应该交给验证方；验证方使用公开的 `alice-state.json` 验证 response。
@@ -187,22 +212,22 @@ go run ./cmd/node verify -state alice-state.json -response response.json
 显式指定设备 key：
 
 ```bash
-go run ./cmd/node respond -identity alice.json -challenge challenge.json -signer-key-id <deviceKeyId> -out response.json
+go run ./cmd/decentid respond -identity alice.json -challenge challenge.json -signer-key-id <deviceKeyId> -out response.json
 ```
 
 ### 7. rotate root
 
 ```bash
-go run ./cmd/node rotate-root -identity alice.json -label rotated-root
-go run ./cmd/node show -identity alice.json
+go run ./cmd/decentid rotate-root -identity alice.json -label rotated-root
+go run ./cmd/decentid show -identity alice.json
 ```
 
 ### 8. attestation
 
 ```bash
-go run ./cmd/node issue-attestation -identity issuer.json -subject "did:p2p:..." -claim-type known -claim-value alice -out attestation.json
-go run ./cmd/node verify-attestation -issuer issuer.json -attestation attestation.json
-go run ./cmd/node attach-attestation -identity alice.json -attestation attestation.json
+go run ./cmd/decentid issue-attestation -identity issuer.json -subject "did:p2p:..." -claim-type known -claim-value alice -out attestation.json
+go run ./cmd/decentid verify-attestation -issuer issuer.json -attestation attestation.json
+go run ./cmd/decentid attach-attestation -identity alice.json -attestation attestation.json
 ```
 
 ### 9. P2P publish / resolve
@@ -210,19 +235,19 @@ go run ./cmd/node attach-attestation -identity alice.json -attestation attestati
 终端 A：
 
 ```bash
-go run ./cmd/node publish -identity alice.json -wait 10m
+go run ./cmd/decentid publish -identity alice.json -wait 10m
 ```
 
 如果不想发布已附着 attestation：
 
 ```bash
-go run ./cmd/node publish -identity alice.json -wait 10m -include-attestations=false
+go run ./cmd/decentid publish -identity alice.json -wait 10m -include-attestations=false
 ```
 
 终端 B：
 
 ```bash
-go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
+go run ./cmd/decentid resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 ```
 
 当前 publish 行为：
@@ -236,7 +261,7 @@ go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 可以启动一个仅监听本机的浏览器操作界面：
 
 ```bash
-go run ./cmd/web -identity alice.json -addr 127.0.0.1:8080
+go run ./cmd/decentid web -identity alice.json -addr 127.0.0.1:8080
 ```
 
 打开输出的本地 URL 后，可通过页面完成：
@@ -255,6 +280,8 @@ go run ./cmd/web -identity alice.json -addr 127.0.0.1:8080
 
 ## CLI 命令速查
 
+- `web`（启动本地操作台）
+- `version`
 - `create`
 - `show`
 - `export-state`

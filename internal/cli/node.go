@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -19,55 +19,65 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		usage()
+// RunNode dispatches a node subcommand. args is the argument slice starting
+// with the subcommand name (e.g. ["create", "-name", "alice"]).
+func RunNode(args []string) {
+	if len(args) < 1 {
+		Usage()
 		os.Exit(1)
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "create":
-		runCreate(os.Args[2:])
+		runCreate(args[1:])
 	case "add-memory":
-		runAddMemory(os.Args[2:])
+		runAddMemory(args[1:])
 	case "show-memory":
-		runShowMemory(os.Args[2:])
+		runShowMemory(args[1:])
 	case "show":
-		runShow(os.Args[2:])
+		runShow(args[1:])
 	case "export-state":
-		runExportState(os.Args[2:])
+		runExportState(args[1:])
 	case "keys":
-		runKeys(os.Args[2:])
+		runKeys(args[1:])
 	case "add-device":
-		runAddDevice(os.Args[2:])
+		runAddDevice(args[1:])
 	case "revoke-device":
-		runRevokeDevice(os.Args[2:])
+		runRevokeDevice(args[1:])
 	case "rotate-root":
-		runRotateRoot(os.Args[2:])
+		runRotateRoot(args[1:])
 	case "issue-attestation":
-		runIssueAttestation(os.Args[2:])
+		runIssueAttestation(args[1:])
 	case "verify-attestation":
-		runVerifyAttestation(os.Args[2:])
+		runVerifyAttestation(args[1:])
 	case "attach-attestation":
-		runAttachAttestation(os.Args[2:])
+		runAttachAttestation(args[1:])
 	case "challenge":
-		runChallenge(os.Args[2:])
+		runChallenge(args[1:])
 	case "respond":
-		runRespond(os.Args[2:])
+		runRespond(args[1:])
 	case "verify":
-		runVerify(os.Args[2:])
+		runVerify(args[1:])
 	case "publish":
-		runPublish(os.Args[2:])
+		runPublish(args[1:])
 	case "resolve":
-		runResolve(os.Args[2:])
+		runResolve(args[1:])
 	default:
-		usage()
+		Usage()
 		os.Exit(1)
 	}
 }
 
-func usage() {
-	fmt.Println("decentid node commands: create | add-memory | show-memory | show | export-state | keys | add-device | revoke-device | rotate-root | issue-attestation | verify-attestation | attach-attestation | challenge | respond | verify | publish | resolve")
+// Usage prints the full command list for the unified decentid binary.
+func Usage() {
+	fmt.Println("decentid commands:")
+	fmt.Println("  web                  start the localhost web console")
+	fmt.Println("  create | show | export-state | keys")
+	fmt.Println("  add-memory | show-memory")
+	fmt.Println("  add-device | revoke-device | rotate-root")
+	fmt.Println("  issue-attestation | verify-attestation | attach-attestation")
+	fmt.Println("  challenge | respond | verify")
+	fmt.Println("  publish | resolve")
 }
 
 func runCreate(args []string) {
