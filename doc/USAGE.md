@@ -3,6 +3,7 @@
 本文档面向直接使用当前 CLI 原型的开发者，覆盖从创建身份到 memory、device、challenge-response、attestation、P2P publish/resolve 的完整流程。
 
 如需项目背景和协议说明，先看仓库根目录下的 `README.md`；实现范围和验收基线见 `PLAN.md`。
+概念不清先看 [`概念模型.md`](./概念模型.md)：核心只有 3 个，并附行话→大白话术语对照表。
 
 ## 1. 环境准备
 

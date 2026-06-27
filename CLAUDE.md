@@ -110,6 +110,8 @@ go vet ./...
 
 If you change CLI behavior, public protocol semantics, or package layout, update `README.md` and this file together.
 
+User-facing concepts and plain-language terminology have a single source of truth: `doc/概念模型.md` (its 行话→大白话 glossary). When adding user-facing copy (web simple mode, product docs), keep terms consistent with that table; framing should lead with the 3 core concepts (identity=key, continuity=signed event chain, login=signature) and treat memory/attestation/P2P/backup as optional extensions.
+
 ## Next likely work items
 
 - shared / multi-recipient private memory

@@ -2,6 +2,8 @@
 
 `decentid` 是一个用 Go 编写的去中心化身份原型。它不是传统账号系统，而是用 `did:p2p:<hash(rootPublicKey)>`、签名事件链、challenge-response、memory / attestation 对象来验证去中心化身份模型。
 
+> 概念不清先看 [`概念模型.md`](./概念模型.md)：核心只有 3 个（身份=密钥、连续性=签名链、登录=签名），并附术语对照表。
+
 ## 1. 进入项目目录
 
 ```bash

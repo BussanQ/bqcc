@@ -12,6 +12,19 @@
 
 详细的第二版实现规划、关键文件、验收清单见 [`PLAN.md`](./PLAN.md)。
 
+## 核心心智模型（先读这个）
+
+觉得概念多？其实**核心只有 3 个**，其余都是可选叠加：
+
+1. **身份 = 一把密钥** —— `DID = did:p2p:<hash(root 公钥)>`，第一次生成后永久不变。
+2. **连续性 = 一条签名的变更链** —— 改动只追加、逐条验签、回放重算，可演化但不可伪造。
+3. **登录 = 证明握着密钥** —— 验证方出题、你签名作答、对方用你的公开名片验签。
+
+剩下的 memory（内容）、attestation（他人背书）、P2P（点对点分享）、加密备份都是**可选扩展**，不用就忽略。
+
+> 一句话：**身份是一把密钥，历史是一条签名链，登录是一次签名。**
+> 完整的大白话讲解 + 术语对照表见 [`doc/概念模型.md`](./doc/概念模型.md)。
+
 ## 当前状态
 
 ### 第一版已跑通
@@ -33,20 +46,25 @@
 
 ## 当前已实现
 
-- Ed25519 root key / device key
-- X25519 encryption key
-- `did:p2p:<hash(rootPublicKey)>` 身份生成
-- append-only identity event chain
-- 基于 event replay 的状态验证
-- 本地 keyring 导入导出（`localKeys` + preferred key IDs）
-- device add / revoke
-- root rotate（DID 保持不变）
-- public memory manifest / object
-- private memory 加密、private memory root、本地解密
-- challenge-response 身份验证
-- standalone attestation 签发 / 验证 / 附着
-- libp2p 远端 state 解析与对象拉取
-- CLI 原型
+> 按「核心 / 可选扩展」分组——核心是地基，扩展可按需取用。术语见 [`doc/概念模型.md`](./doc/概念模型.md)。
+
+**核心（身份 + 连续性 + 登录）**
+
+- `did:p2p:<hash(rootPublicKey)>` 身份生成（Ed25519 root / device key、X25519 encryption key）
+- append-only identity event chain（变更链）
+- 基于 event replay 的状态验证（回放重算）
+- 本地 keyring 导入导出（`localKeys` + preferred key IDs）与公开 state 二分
+- device add / revoke、root rotate（DID 保持不变）
+- challenge-response 身份验证（登录验证）
+
+**可选扩展**
+
+- public memory manifest / object（公开内容）
+- private memory 加密、private memory root、本地解密（只有我能看）
+- standalone attestation 签发 / 验证 / 附着（他人背书）
+- libp2p 远端 state 解析与对象拉取（点对点分享）
+- 口令加密备份 / 恢复
+- CLI 原型 + 浏览器操作台（简单模式 / 高级模式）
 
 ## 当前未实现
 
@@ -57,7 +75,9 @@
 - 完整的 trust / reputation policy
 - 生产级密钥托管、恢复与硬件保护
 
-## 协议关键规则
+## 协议关键规则（进阶）
+
+> 以下是协议细节与设计取舍，日常使用不必读；只想理解整体模型看 [`doc/概念模型.md`](./doc/概念模型.md) 即可。
 
 ### DID 来自首次 root public key
 
