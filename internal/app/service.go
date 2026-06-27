@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/example/decentid/internal/attestation"
 	"github.com/example/decentid/internal/auth"
+	icrypto "github.com/example/decentid/internal/crypto"
 	"github.com/example/decentid/internal/identity"
 	"github.com/example/decentid/internal/memory"
 	"github.com/example/decentid/internal/p2p"
@@ -322,6 +324,110 @@ func (s *Service) ShowMemory(memoryFile string) (ShowMemoryResult, error) {
 	result.Plaintext = plaintext
 	result.Revealed = true
 	return result, nil
+}
+
+// NoteSummary is a friendly, listable view of a memory object for the simple UI.
+type NoteSummary struct {
+	CID        string           `json:"cid"`
+	Type       string           `json:"type"`
+	CreatedAt  time.Time        `json:"createdAt"`
+	Visibility types.Visibility `json:"visibility"`
+	Preview    string           `json:"preview,omitempty"`
+	Locked     bool             `json:"locked"`
+	File       string           `json:"file"`
+}
+
+// ListNotes enumerates memory objects stored next to the identity file. Because
+// AddMemory writes a fresh single-item manifest per note (no accumulation),
+// listing scans object files directly rather than reading a manifest.
+func (s *Service) ListNotes() ([]NoteSummary, error) {
+	path := s.IdentityPath()
+	baseDir := filepath.Dir(path)
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []NoteSummary{}, nil
+		}
+		return nil, err
+	}
+	identityName := filepath.Base(path)
+	notes := []NoteSummary{}
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == identityName || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		full := filepath.Join(baseDir, entry.Name())
+		var obj types.MemoryObject
+		if err := readJSON(full, &obj); err != nil {
+			continue
+		}
+		// A memory object always carries a CID, a type, and either a plaintext
+		// payload or ciphertext. Manifests, attestations, states and challenges
+		// lack a "type" field and are skipped.
+		if obj.CID == "" || obj.Type == "" || (obj.Payload == "" && obj.Ciphertext == "") {
+			continue
+		}
+		note := NoteSummary{CID: obj.CID, Type: obj.Type, CreatedAt: obj.CreatedAt, Visibility: obj.Visibility, File: full}
+		if obj.Visibility == types.VisibilityPrivate || obj.Encryption != nil {
+			note.Locked = true
+		} else {
+			note.Preview = obj.Payload
+		}
+		notes = append(notes, note)
+	}
+	sort.Slice(notes, func(i, j int) bool { return notes[i].CreatedAt.After(notes[j].CreatedAt) })
+	return notes, nil
+}
+
+// SelfCheck proves the current device controls this identity by running a full
+// challenge -> respond -> verify against the identity's own public state.
+func (s *Service) SelfCheck() (VerificationResult, error) {
+	id, _, err := s.loadIdentityWithPath()
+	if err != nil {
+		return VerificationResult{}, err
+	}
+	challenge, err := auth.NewChallenge(id.Document.ID, 5*time.Minute)
+	if err != nil {
+		return VerificationResult{}, err
+	}
+	response, err := auth.SignChallenge(challenge, "", id)
+	if err != nil {
+		return VerificationResult{}, err
+	}
+	return VerifyChallengeResponse(id.SignedState(), response), nil
+}
+
+// ExportBackup returns the local identity file encrypted with a passphrase,
+// suitable for the user to download and store safely.
+func (s *Service) ExportBackup(passphrase string) ([]byte, error) {
+	if strings.TrimSpace(passphrase) == "" {
+		return nil, errors.New("需要设置备份口令")
+	}
+	data, err := os.ReadFile(s.IdentityPath())
+	if err != nil {
+		return nil, err
+	}
+	return icrypto.EncryptWithPassphrase(data, passphrase)
+}
+
+// ImportBackup decrypts a passphrase-protected backup, verifies it is a valid
+// identity, and restores it to the local identity path.
+func (s *Service) ImportBackup(data []byte, passphrase string) error {
+	if strings.TrimSpace(passphrase) == "" {
+		return errors.New("需要输入备份口令")
+	}
+	plaintext, err := icrypto.DecryptWithPassphrase(data, passphrase)
+	if err != nil {
+		return errors.New("备份口令不正确或文件已损坏")
+	}
+	local, err := identity.UnmarshalLocal(plaintext)
+	if err != nil {
+		return errors.New("备份内容不是有效的身份文件")
+	}
+	if _, err := identity.FromLocal(local); err != nil {
+		return errors.New("备份内容校验失败：" + err.Error())
+	}
+	return os.WriteFile(s.IdentityPath(), plaintext, 0o600)
 }
 
 func (s *Service) AddDevice(label string) (types.KeyRecord, error) {

@@ -1,0 +1,37 @@
+{{template "simple_shell_start" .}}
+{{if .Summary.HasIdentity}}
+<section class="simple-card profile-card">
+  <span class="avatar avatar-lg">{{printf "%.1s" .Summary.DisplayName}}</span>
+  <h2>{{if .Summary.DisplayName}}{{.Summary.DisplayName}}{{else}}未命名{{end}}</h2>
+  <p class="muted">这是只属于你的数字身份，没有任何平台能替你注销它。</p>
+
+  <div class="id-code">
+    <span class="id-label">我的身份码</span>
+    <div class="copy-field">
+      <code class="did-line">{{short .Summary.DID}}</code>
+      <button class="copy-btn" type="button" data-copy-value="{{.Summary.DID}}" aria-label="复制身份码"><svg class="icon"><use href="#i-copy"/></svg></button>
+    </div>
+    <button class="ghost-button small" type="button" data-qr="{{.Summary.DID}}"><svg class="icon"><use href="#i-qr"/></svg>出示二维码</button>
+    <div class="qr-box" id="qr-box" hidden></div>
+  </div>
+</section>
+
+<section class="tile-grid">
+  <a class="tile" href="/prove"><span class="tile-icon ok"><svg class="icon"><use href="#i-auth"/></svg></span><strong>证明我是我</strong><small>一键验证这台设备</small></a>
+  <a class="tile" href="/notes"><span class="tile-icon"><svg class="icon"><use href="#i-memory"/></svg></span><strong>我的内容</strong><small>写下并保存内容</small></a>
+  <a class="tile" href="/devices"><span class="tile-icon"><svg class="icon"><use href="#i-devices"/></svg></span><strong>我的设备</strong><small>管理登录设备</small></a>
+  <a class="tile" href="/backup"><span class="tile-icon warn"><svg class="icon"><use href="#i-lock"/></svg></span><strong>备份与恢复</strong><small>守护好你的身份</small></a>
+</section>
+{{else}}
+<section class="simple-card onboarding">
+  <span class="avatar avatar-lg">·</span>
+  <h2>创建你的数字身份</h2>
+  <p class="muted">只需起一个名字，30 秒拥有一个完全由你掌控、不依赖任何平台的身份。</p>
+  <form class="action-form" data-endpoint="/api/identity/create" data-toast="身份已创建" data-reload="/">
+    <label>你的名字<input name="displayName" placeholder="例如：小明" autofocus></label>
+    <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-plus"/></svg>创建身份</button></div>
+  </form>
+  <p class="callout">名字之后可改，你的身份码永远不变。</p>
+</section>
+{{end}}
+{{template "simple_shell_end" .}}

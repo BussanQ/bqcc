@@ -203,6 +203,9 @@ async function submitAction(form) {
       }
       applyFill(form, json);
       refreshSummary();
+      if (form.dataset.reload) {
+        setTimeout(() => location.assign(form.dataset.reload), 600);
+      }
     } else {
       toast((json.error && json.error.message) || '操作失败', 'err');
     }
@@ -239,16 +242,42 @@ async function refreshSummary() {
 /* ---------- events ---------- */
 
 document.addEventListener('submit', (event) => {
-  const form = event.target.closest('.action-form');
-  if (!form) return;
-  event.preventDefault();
-  submitAction(form);
+  const action = event.target.closest('.action-form');
+  if (action) {
+    event.preventDefault();
+    submitAction(action);
+    return;
+  }
+  // Native (non-AJAX) forms that just want a confirmation prompt.
+  const confirmForm = event.target.closest('.confirm-form');
+  if (confirmForm && confirmForm.dataset.confirm && !window.confirm(confirmForm.dataset.confirm)) {
+    event.preventDefault();
+  }
 });
 
 document.addEventListener('click', async (event) => {
   const copyValue = event.target.closest('[data-copy-value]');
   if (copyValue) {
     copyText(copyValue.dataset.copyValue, copyValue);
+    return;
+  }
+
+  const qrButton = event.target.closest('[data-qr]');
+  if (qrButton) {
+    const box = document.querySelector('#qr-box');
+    if (!box) return;
+    if (!box.hidden) {
+      box.hidden = true;
+      box.innerHTML = '';
+      return;
+    }
+    const img = document.createElement('img');
+    img.className = 'qr-img';
+    img.alt = '身份码二维码';
+    img.src = '/api/qr?data=' + encodeURIComponent(qrButton.dataset.qr);
+    box.innerHTML = '';
+    box.appendChild(img);
+    box.hidden = false;
     return;
   }
 
@@ -302,3 +331,78 @@ document.addEventListener('click', async (event) => {
     }
   }
 });
+
+/* ---------- simple mode: notes list ---------- */
+
+async function revealNote(file, body, btn) {
+  btn.disabled = true;
+  btn.textContent = '解密中…';
+  try {
+    const res = await fetch('/api/memory/show', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memoryFile: file }),
+    });
+    const json = await res.json();
+    if (json.ok && json.data) {
+      body.textContent = json.data.plaintext || '(空)';
+    } else {
+      btn.disabled = false;
+      btn.textContent = '查看';
+      toast((json.error && json.error.message) || '解密失败', 'err');
+    }
+  } catch (error) {
+    btn.disabled = false;
+    btn.textContent = '查看';
+    toast('网络错误：' + error.message, 'err');
+  }
+}
+
+async function loadNotes() {
+  const host = document.querySelector('[data-notes-list]');
+  if (!host) return;
+  try {
+    const res = await fetch('/api/notes');
+    const json = await res.json();
+    const notes = (json.ok && json.data && json.data.notes) || [];
+    if (!notes.length) {
+      host.innerHTML = '<p class="muted">还没有内容，写第一条吧。</p>';
+      return;
+    }
+    host.innerHTML = '';
+    for (const note of notes) {
+      const card = document.createElement('div');
+      card.className = 'note-card';
+
+      const head = document.createElement('div');
+      head.className = 'note-head';
+      const vis = document.createElement('span');
+      vis.className = 'note-vis ' + (note.locked ? 'locked' : 'public');
+      vis.textContent = note.locked ? '🔒 只有我能看' : '公开';
+      const time = document.createElement('small');
+      time.className = 'muted';
+      time.textContent = (note.createdAt || '').replace('T', ' ').slice(0, 16);
+      head.append(vis, time);
+
+      const body = document.createElement('div');
+      body.className = 'note-body';
+      if (note.locked) {
+        const btn = document.createElement('button');
+        btn.className = 'ghost-button small';
+        btn.type = 'button';
+        btn.textContent = '查看';
+        btn.addEventListener('click', () => revealNote(note.file, body, btn));
+        body.appendChild(btn);
+      } else {
+        body.textContent = note.preview || '';
+      }
+
+      card.append(head, body);
+      host.appendChild(card);
+    }
+  } catch (error) {
+    host.innerHTML = '<p class="muted">加载失败</p>';
+  }
+}
+
+loadNotes();

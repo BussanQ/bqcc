@@ -1,0 +1,24 @@
+{{template "simple_shell_start" .}}
+<section class="simple-card center">
+  <span class="tile-icon ok big"><svg class="icon"><use href="#i-auth"/></svg></span>
+  <h2>证明这是我</h2>
+  <p class="muted">点一下，这台设备会用你的私钥现场签名，并用你的公开身份验证——全程不联网、不用账号密码。</p>
+  <form class="action-form" data-endpoint="/api/selfcheck" data-toast="验证完成">
+    <div class="form-actions"><button class="primary-button block big" type="submit"><svg class="icon"><use href="#i-check"/></svg>证明这是我</button></div>
+  </form>
+</section>
+
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-globe"/></svg><span class="eyebrow">给别人验证</span></div>
+  <p class="muted">需要让别人确认「这是你」时，把你的公开名片给对方即可——它不含任何私钥，别人无法冒充你。</p>
+  <form class="action-form" data-endpoint="/api/identity/export-state" data-toast="公开名片已导出">
+    <div class="form-actions">
+      <button class="ghost-button" type="submit"><svg class="icon"><use href="#i-send"/></svg>导出我的公开名片</button>
+      <button class="ghost-button" type="button" data-qr="{{.Summary.DID}}"><svg class="icon"><use href="#i-qr"/></svg>出示身份码二维码</button>
+    </div>
+  </form>
+  <div class="qr-box" id="qr-box" hidden></div>
+</section>
+
+{{template "result_panel" .}}
+{{template "simple_shell_end" .}}

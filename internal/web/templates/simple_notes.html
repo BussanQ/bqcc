@@ -1,0 +1,21 @@
+{{template "simple_shell_start" .}}
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-plus"/></svg><span class="eyebrow">写一条</span></div>
+  <form class="action-form" data-endpoint="/api/memory/add" data-toast="已保存" data-reload="/notes">
+    <input type="hidden" name="type" value="note">
+    <label>内容<textarea name="payload" rows="4" placeholder="写点什么…" autofocus></textarea></label>
+    <label>谁能看到
+      <select name="visibility">
+        <option value="private">只有我能看（加密）</option>
+        <option value="public">公开</option>
+      </select>
+    </label>
+    <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-plus"/></svg>保存</button></div>
+  </form>
+</section>
+
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-memory"/></svg><span class="eyebrow">我的内容</span></div>
+  <div id="notes-list" data-notes-list><p class="muted">加载中…</p></div>
+</section>
+{{template "simple_shell_end" .}}

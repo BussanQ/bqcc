@@ -264,7 +264,22 @@ go run ./cmd/decentid resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 go run ./cmd/decentid web -identity alice.json -addr 127.0.0.1:8080
 ```
 
-打开输出的本地 URL 后，可通过页面完成：
+界面分两层：
+
+### 简单模式（默认，面向大众）
+
+打开本地 URL 即进入零术语的简单界面，底部 tab 导航「我 / 证明 / 内容 / 设备 / 备份」：
+- **我**：30 秒创建身份；头像 + 名字 + 「我的身份码」（短 DID，可复制、可出示二维码）。
+- **证明我是我**：一个按钮一键自检（内部 challenge→respond→verify，给出 ✓/✗），无需任何 JSON 粘贴；要给别人验证时导出公开名片或出示身份码二维码。
+- **我的内容**：写公开/「只有我能看」（加密）内容，列表展示，私有项点「查看」即时解密。
+- **我的设备**：友好的设备列表，一键「移除」（撤销）。
+- **备份与恢复**：用口令导出加密备份文件、用文件+口令一键恢复（scrypt + AES-256-GCM）。
+
+身份码二维码由本地 `/api/qr` 服务端生成（仅同源 PNG）。
+
+### 高级模式（协议控制台）
+
+原 7 页协议操作台移到 `/advanced`，保留全部底层能力（DID/CID/manifest/multiaddr/JSON）：
 - 创建身份、查看公开 signed state、导出 verifier 可用 state
 - 添加 public / private memory，并显式解密查看 private memory
 - 添加 / 撤销 device，rotate root
@@ -272,11 +287,14 @@ go run ./cmd/decentid web -identity alice.json -addr 127.0.0.1:8080
 - issue / verify / attach attestation
 - publish / resolve P2P public state
 
+简单模式右上角「高级」可进入 `/advanced`，高级模式侧栏可返回简单模式。
+
 安全边界：
 - Web 操作台默认拒绝非 loopback 绑定和非 localhost Host
 - 默认 API 不返回 `localKeys` 或私钥字节
 - private memory 只有用户点击 reveal 时才显示明文
 - publish 仍只发布 signed identity state、public memory 和可选 attached attestation，不发布 private memory
+- 备份文件用口令派生密钥（scrypt）+ AES-256-GCM 加密，口令错误或文件被篡改都无法恢复
 
 ## CLI 命令速查
 

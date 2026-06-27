@@ -10,9 +10,85 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
+
+	"golang.org/x/crypto/scrypt"
 )
+
+const (
+	passphraseSaltSize = 16
+	scryptN            = 1 << 15
+	scryptR            = 8
+	scryptP            = 1
+	scryptKeyLen       = 32
+)
+
+// EncryptWithPassphrase derives a key from passphrase via scrypt and seals the
+// plaintext with AES-256-GCM. Output layout: salt(16) || nonce(12) || ciphertext.
+func EncryptWithPassphrase(plaintext []byte, passphrase string) ([]byte, error) {
+	if passphrase == "" {
+		return nil, errors.New("passphrase required")
+	}
+	salt := make([]byte, passphraseSaltSize)
+	if _, err := rand.Read(salt); err != nil {
+		return nil, err
+	}
+	key, err := scrypt.Key([]byte(passphrase), salt, scryptN, scryptR, scryptP, scryptKeyLen)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, err
+	}
+	ciphertext := gcm.Seal(nil, nonce, plaintext, salt)
+	out := make([]byte, 0, len(salt)+len(nonce)+len(ciphertext))
+	out = append(out, salt...)
+	out = append(out, nonce...)
+	out = append(out, ciphertext...)
+	return out, nil
+}
+
+// DecryptWithPassphrase reverses EncryptWithPassphrase. A wrong passphrase or
+// tampered blob fails GCM authentication and returns an error.
+func DecryptWithPassphrase(blob []byte, passphrase string) ([]byte, error) {
+	if passphrase == "" {
+		return nil, errors.New("passphrase required")
+	}
+	if len(blob) < passphraseSaltSize {
+		return nil, errors.New("backup data too short")
+	}
+	salt := blob[:passphraseSaltSize]
+	derived, err := scrypt.Key([]byte(passphrase), salt, scryptN, scryptR, scryptP, scryptKeyLen)
+	if err != nil {
+		return nil, err
+	}
+	block, err := aes.NewCipher(derived)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonceSize := gcm.NonceSize()
+	if len(blob) < passphraseSaltSize+nonceSize {
+		return nil, errors.New("backup data too short")
+	}
+	nonce := blob[passphraseSaltSize : passphraseSaltSize+nonceSize]
+	ciphertext := blob[passphraseSaltSize+nonceSize:]
+	return gcm.Open(nil, nonce, ciphertext, salt)
+}
 
 func GenerateEd25519Keypair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)

@@ -34,22 +34,23 @@
 
   <div class="console-shell">
     <aside class="rail" aria-label="主导航">
-      <a class="brand" href="/" aria-label="DecentID 控制台首页">
+      <a class="brand" href="/advanced" aria-label="DecentID 控制台首页">
         <span class="brand-mark">D</span>
         <span>
           <strong>DecentID</strong>
-          <small>本地身份操作台</small>
+          <small>高级控制台</small>
         </span>
       </a>
       <nav class="nav-list">
-        <a class="nav-item {{activeClass .Active "dashboard"}}" href="/"><svg class="icon"><use href="#i-dashboard"/></svg><span>总览</span></a>
-        <a class="nav-item {{activeClass .Active "identity"}}" href="/identity"><svg class="icon"><use href="#i-identity"/></svg><span>身份</span></a>
-        <a class="nav-item {{activeClass .Active "memory"}}" href="/memory"><svg class="icon"><use href="#i-memory"/></svg><span>记忆</span></a>
-        <a class="nav-item {{activeClass .Active "devices"}}" href="/devices"><svg class="icon"><use href="#i-devices"/></svg><span>设备</span></a>
-        <a class="nav-item {{activeClass .Active "auth"}}" href="/auth"><svg class="icon"><use href="#i-auth"/></svg><span>认证</span></a>
-        <a class="nav-item {{activeClass .Active "attestations"}}" href="/attestations"><svg class="icon"><use href="#i-attestations"/></svg><span>证明</span></a>
-        <a class="nav-item {{activeClass .Active "network"}}" href="/network"><svg class="icon"><use href="#i-network"/></svg><span>网络</span></a>
+        <a class="nav-item {{activeClass .Active "dashboard"}}" href="/advanced"><svg class="icon"><use href="#i-dashboard"/></svg><span>总览</span></a>
+        <a class="nav-item {{activeClass .Active "identity"}}" href="/advanced/identity"><svg class="icon"><use href="#i-identity"/></svg><span>身份</span></a>
+        <a class="nav-item {{activeClass .Active "memory"}}" href="/advanced/memory"><svg class="icon"><use href="#i-memory"/></svg><span>记忆</span></a>
+        <a class="nav-item {{activeClass .Active "devices"}}" href="/advanced/devices"><svg class="icon"><use href="#i-devices"/></svg><span>设备</span></a>
+        <a class="nav-item {{activeClass .Active "auth"}}" href="/advanced/auth"><svg class="icon"><use href="#i-auth"/></svg><span>认证</span></a>
+        <a class="nav-item {{activeClass .Active "attestations"}}" href="/advanced/attestations"><svg class="icon"><use href="#i-attestations"/></svg><span>证明</span></a>
+        <a class="nav-item {{activeClass .Active "network"}}" href="/advanced/network"><svg class="icon"><use href="#i-network"/></svg><span>网络</span></a>
       </nav>
+      <a class="nav-item" href="/"><svg class="icon"><use href="#i-arrow"/></svg><span>← 返回简单模式</span></a>
       <section class="rail-card">
         <span class="eyebrow"><svg class="icon"><use href="#i-lock"/></svg>身份文件</span>
         <code>{{.IdentityPath}}</code>
