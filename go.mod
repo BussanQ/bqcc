@@ -7,6 +7,8 @@ require (
 	github.com/libp2p/go-libp2p-kad-dht v0.29.0
 	github.com/libp2p/go-libp2p-pubsub v0.15.0
 	github.com/multiformats/go-multiaddr v0.14.0
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	golang.org/x/crypto v0.32.0
 )
 
 require (
@@ -126,7 +128,6 @@ require (
 	go.uber.org/mock v0.5.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/net v0.34.0 // indirect

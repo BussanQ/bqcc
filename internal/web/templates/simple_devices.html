@@ -1,0 +1,37 @@
+{{template "simple_shell_start" .}}
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-plus"/></svg><span class="eyebrow">添加设备</span></div>
+  <p class="muted">给你的另一台设备（手机、电脑）授权登录。</p>
+  <form class="action-form" data-endpoint="/api/devices/add" data-toast="设备已添加" data-reload="/devices">
+    <label>设备名称<input name="label" placeholder="例如：我的手机"></label>
+    <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-plus"/></svg>添加设备</button></div>
+  </form>
+</section>
+
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-devices"/></svg><span class="eyebrow">已授权设备</span></div>
+  <div class="device-list">
+    {{$hasDevice := false}}
+    {{range .Summary.Keys}}
+      {{if eq (printf "%s" .Role) "device"}}
+        {{$hasDevice = true}}
+        <div class="device-row {{if not .RevokedAt.IsZero}}is-revoked{{end}}">
+          <span class="device-dot"></span>
+          <div class="device-info">
+            <strong>{{if .LocalPrivateKeyLabel}}{{.LocalPrivateKeyLabel}}{{else}}设备{{end}}{{if .PreferredDevice}} · 当前设备{{end}}</strong>
+            <small>添加于 {{.AddedAt.Format "2006-01-02 15:04"}}{{if not .RevokedAt.IsZero}} · 已移除{{end}}</small>
+          </div>
+          {{if .RevokedAt.IsZero}}
+          <form class="action-form inline" data-endpoint="/api/devices/revoke" data-confirm="移除后这台设备将无法再用于登录。继续？" data-toast="设备已移除" data-reload="/devices">
+            <input type="hidden" name="keyId" value="{{.ID}}">
+            <input type="hidden" name="reason" value="user removed">
+            <button class="danger-button small" type="submit"><svg class="icon"><use href="#i-x"/></svg>移除</button>
+          </form>
+          {{end}}
+        </div>
+      {{end}}
+    {{end}}
+    {{if not $hasDevice}}<p class="muted">还没有设备。创建身份后会自动有一台。</p>{{end}}
+  </div>
+</section>
+{{template "simple_shell_end" .}}

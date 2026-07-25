@@ -49,15 +49,29 @@ func New(service *app.Service) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(s.static))))
-	mux.HandleFunc("/", s.page("/", "dashboard.html", "dashboard", "控制台"))
-	mux.HandleFunc("/identity", s.page("/identity", "identity.html", "identity", "身份"))
-	mux.HandleFunc("/memory", s.page("/memory", "memory.html", "memory", "记忆"))
-	mux.HandleFunc("/devices", s.page("/devices", "devices.html", "devices", "设备"))
-	mux.HandleFunc("/auth", s.page("/auth", "auth.html", "auth", "认证"))
-	mux.HandleFunc("/attestations", s.page("/attestations", "attestations.html", "attestations", "证明"))
-	mux.HandleFunc("/network", s.page("/network", "network.html", "network", "网络"))
+
+	// Simple mode (default, consumer-facing) at the root.
+	mux.HandleFunc("/", s.page("/", "simple_home.html", "home", "我的身份"))
+	mux.HandleFunc("/prove", s.page("/prove", "simple_prove.html", "prove", "证明我是我"))
+	mux.HandleFunc("/notes", s.page("/notes", "simple_notes.html", "notes", "我的内容"))
+	mux.HandleFunc("/devices", s.page("/devices", "simple_devices.html", "devices", "我的设备"))
+	mux.HandleFunc("/backup", s.page("/backup", "simple_backup.html", "backup", "备份与恢复"))
+
+	// Advanced mode (protocol console) under /advanced.
+	mux.HandleFunc("/advanced", s.page("/advanced", "dashboard.html", "dashboard", "控制台"))
+	mux.HandleFunc("/advanced/identity", s.page("/advanced/identity", "identity.html", "identity", "身份"))
+	mux.HandleFunc("/advanced/memory", s.page("/advanced/memory", "memory.html", "memory", "记忆"))
+	mux.HandleFunc("/advanced/devices", s.page("/advanced/devices", "devices.html", "devices", "设备"))
+	mux.HandleFunc("/advanced/auth", s.page("/advanced/auth", "auth.html", "auth", "认证"))
+	mux.HandleFunc("/advanced/attestations", s.page("/advanced/attestations", "attestations.html", "attestations", "证明"))
+	mux.HandleFunc("/advanced/network", s.page("/advanced/network", "network.html", "network", "网络"))
 
 	mux.HandleFunc("/api/summary", s.apiSummary)
+	mux.HandleFunc("/api/selfcheck", s.apiSelfCheck)
+	mux.HandleFunc("/api/notes", s.apiNotes)
+	mux.HandleFunc("/api/qr", s.apiQR)
+	mux.HandleFunc("/api/backup/export", s.apiBackupExport)
+	mux.HandleFunc("/api/backup/import", s.apiBackupImport)
 	mux.HandleFunc("/api/identity/create", s.apiCreateIdentity)
 	mux.HandleFunc("/api/identity/public-state", s.apiPublicState)
 	mux.HandleFunc("/api/identity/export-state", s.apiExportState)
@@ -179,8 +193,13 @@ func (s *Server) security(next http.Handler) http.Handler {
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/memory" || r.URL.Path == "/identity" {
+		if strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/advanced/") || r.URL.Path == "/notes" || r.URL.Path == "/backup" {
 			w.Header().Set("Cache-Control", "no-store")
+		}
+		// Embedded CSS/JS carry a zero modtime, so without this the browser keeps
+		// serving a stale copy after a rebuild. Always revalidate static assets.
+		if strings.HasPrefix(r.URL.Path, "/static/") {
+			w.Header().Set("Cache-Control", "no-cache")
 		}
 		next.ServeHTTP(w, r)
 	})

@@ -2,7 +2,9 @@ package p2p
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -15,12 +17,20 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	ma "github.com/multiformats/go-multiaddr"
 
+	"github.com/example/decentid/internal/attestation"
+	"github.com/example/decentid/internal/memory"
 	"github.com/example/decentid/pkg/types"
 )
 
 const (
 	identityProtocol protocol.ID = "/decentid/state/1.0.0"
 	objectProtocol   protocol.ID = "/decentid/object/1.0.0"
+
+	// maxObjectSize bounds how many bytes we read from a remote stream for a
+	// signed state or content object, preventing memory-exhaustion from a
+	// malicious peer. maxQuerySize bounds an inbound identity/CID query.
+	maxObjectSize = 16 << 20 // 16 MiB
+	maxQuerySize  = 4096
 )
 
 type Resolver struct {
@@ -176,12 +186,15 @@ func (r *Resolver) ResolveRemote(ctx context.Context, peerID peer.ID, identityID
 	if err := stream.CloseWrite(); err != nil {
 		return types.SignedIdentityState{}, err
 	}
-	data, err := io.ReadAll(stream)
+	data, err := io.ReadAll(io.LimitReader(stream, maxObjectSize))
 	if err != nil {
 		return types.SignedIdentityState{}, err
 	}
 	if len(data) == 0 {
 		return types.SignedIdentityState{}, errors.New("identity not found")
+	}
+	if len(data) >= maxObjectSize {
+		return types.SignedIdentityState{}, fmt.Errorf("identity state exceeds %d bytes", maxObjectSize)
 	}
 	state, err := unmarshalState(data)
 	if err != nil {
@@ -205,20 +218,52 @@ func (r *Resolver) ResolveObjectRemote(ctx context.Context, peerID peer.ID, cid 
 	if err := stream.CloseWrite(); err != nil {
 		return nil, err
 	}
-	payload, err := io.ReadAll(stream)
+	payload, err := io.ReadAll(io.LimitReader(stream, maxObjectSize))
 	if err != nil {
 		return nil, err
 	}
 	if len(payload) == 0 {
 		return nil, errors.New("object not found")
 	}
+	if len(payload) >= maxObjectSize {
+		return nil, fmt.Errorf("object %s exceeds %d bytes", cid, maxObjectSize)
+	}
+	if err := verifyObjectCID(cid, payload); err != nil {
+		return nil, err
+	}
 	r.StoreObject(cid, payload)
 	return payload, nil
 }
 
+// verifyObjectCID enforces content-addressing on a fetched object: it parses
+// the payload as each known object type and accepts only if a recomputed CID
+// matches the requested cid. A malicious peer therefore cannot serve arbitrary
+// bytes under a claimed CID.
+func verifyObjectCID(cid string, payload []byte) error {
+	var manifest types.MemoryManifest
+	if json.Unmarshal(payload, &manifest) == nil {
+		if c, err := memory.ManifestCID(manifest); err == nil && c == cid {
+			return nil
+		}
+	}
+	var obj types.MemoryObject
+	if json.Unmarshal(payload, &obj) == nil {
+		if c, err := memory.ObjectCID(obj); err == nil && c == cid {
+			return nil
+		}
+	}
+	var att types.Attestation
+	if json.Unmarshal(payload, &att) == nil {
+		if c, err := attestation.AttestationCID(att); err == nil && c == cid {
+			return nil
+		}
+	}
+	return fmt.Errorf("object %s failed integrity check", cid)
+}
+
 func (r *Resolver) handleStateStream(stream network.Stream) {
 	defer stream.Close()
-	query, err := io.ReadAll(stream)
+	query, err := io.ReadAll(io.LimitReader(stream, maxQuerySize))
 	if err != nil {
 		return
 	}
@@ -238,7 +283,7 @@ func (r *Resolver) handleStateStream(stream network.Stream) {
 
 func (r *Resolver) handleObjectStream(stream network.Stream) {
 	defer stream.Close()
-	query, err := io.ReadAll(stream)
+	query, err := io.ReadAll(io.LimitReader(stream, maxQuerySize))
 	if err != nil {
 		return
 	}

@@ -3,6 +3,7 @@
 本文档面向直接使用当前 CLI 原型的开发者，覆盖从创建身份到 memory、device、challenge-response、attestation、P2P publish/resolve 的完整流程。
 
 如需项目背景和协议说明，先看仓库根目录下的 `README.md`；实现范围和验收基线见 `PLAN.md`。
+概念不清先看 [`概念模型.md`](./概念模型.md)：核心只有 3 个，并附行话→大白话术语对照表。
 
 ## 1. 环境准备
 
@@ -55,7 +56,7 @@ mkdir -p bq
 创建一个新身份：
 
 ```bash
-go run ./cmd/node create -name alice -out bq/identity.json
+go run ./cmd/decentid create -name alice -out bq/identity.json
 ```
 
 成功后会输出类似：
@@ -88,7 +89,7 @@ created did:p2p:...
 查看本地身份文件内容：
 
 ```bash
-go run ./cmd/node show -identity bq/identity.json
+go run ./cmd/decentid show -identity bq/identity.json
 ```
 
 这会直接打印完整的本地身份 JSON。
@@ -102,7 +103,7 @@ go run ./cmd/node show -identity bq/identity.json
 ## 5. 查看 key 状态
 
 ```bash
-go run ./cmd/node keys -identity bq/identity.json
+go run ./cmd/decentid keys -identity bq/identity.json
 ```
 
 会输出：
@@ -126,7 +127,7 @@ go run ./cmd/node keys -identity bq/identity.json
 ### 6.1 添加 public memory
 
 ```bash
-go run ./cmd/node add-memory -identity bq/identity.json -type note -payload "hello public"
+go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "hello public"
 ```
 
 执行后会输出两个 CID：
@@ -146,7 +147,7 @@ manifest <manifestCID>
 ### 6.2 添加 private memory
 
 ```bash
-go run ./cmd/node add-memory -identity bq/identity.json -type note -payload "secret memory" -visibility private
+go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "secret memory" -visibility private
 ```
 
 这条命令会：
@@ -174,7 +175,7 @@ go run ./cmd/node add-memory -identity bq/identity.json -type note -payload "sec
 ### 6.4 解密查看 private memory
 
 ```bash
-go run ./cmd/node show-memory -identity bq/identity.json -memory bq/<memoryCID>.json
+go run ./cmd/decentid show-memory -identity bq/identity.json -memory bq/<memoryCID>.json
 ```
 
 行为说明：
@@ -187,7 +188,7 @@ go run ./cmd/node show-memory -identity bq/identity.json -memory bq/<memoryCID>.
 增加一个新的 device key：
 
 ```bash
-go run ./cmd/node add-device -identity bq/identity.json -label laptop
+go run ./cmd/decentid add-device -identity bq/identity.json -label laptop
 ```
 
 返回结果里会包含新 device key 的记录和 key ID。
@@ -195,7 +196,7 @@ go run ./cmd/node add-device -identity bq/identity.json -label laptop
 建议随后执行：
 
 ```bash
-go run ./cmd/node keys -identity bq/identity.json
+go run ./cmd/decentid keys -identity bq/identity.json
 ```
 
 确认：
@@ -208,13 +209,13 @@ go run ./cmd/node keys -identity bq/identity.json
 先查出要撤销的设备 key ID：
 
 ```bash
-go run ./cmd/node keys -identity bq/identity.json
+go run ./cmd/decentid keys -identity bq/identity.json
 ```
 
 然后执行：
 
 ```bash
-go run ./cmd/node revoke-device -identity bq/identity.json -key-id <deviceKeyId> -reason "lost"
+go run ./cmd/decentid revoke-device -identity bq/identity.json -key-id <deviceKeyId> -reason "lost"
 ```
 
 成功后会输出：
@@ -238,13 +239,13 @@ revoked <deviceKeyId>
 ### 9.1 生成 challenge
 
 ```bash
-go run ./cmd/node challenge -id "did:p2p:..." -out bq/challenge.json
+go run ./cmd/decentid challenge -id "did:p2p:..." -out bq/challenge.json
 ```
 
 也可以指定有效期：
 
 ```bash
-go run ./cmd/node challenge -id "did:p2p:..." -ttl 10m -out bq/challenge.json
+go run ./cmd/decentid challenge -id "did:p2p:..." -ttl 10m -out bq/challenge.json
 ```
 
 ### 9.2 用身份响应 challenge
@@ -252,19 +253,19 @@ go run ./cmd/node challenge -id "did:p2p:..." -ttl 10m -out bq/challenge.json
 默认使用当前 preferred device key：
 
 ```bash
-go run ./cmd/node respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
+go run ./cmd/decentid respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
 ```
 
 显式指定设备 key：
 
 ```bash
-go run ./cmd/node respond -identity bq/identity.json -challenge bq/challenge.json -signer-key-id <deviceKeyId> -out bq/response.json
+go run ./cmd/decentid respond -identity bq/identity.json -challenge bq/challenge.json -signer-key-id <deviceKeyId> -out bq/response.json
 ```
 
 ### 9.3 导出公开身份状态
 
 ```bash
-go run ./cmd/node export-state -identity bq/identity.json -out bq/state.json
+go run ./cmd/decentid export-state -identity bq/identity.json -out bq/state.json
 ```
 
 `bq/identity.json` 是本地私有文件，不应该发给验证方。验证方只需要公开的 `bq/state.json`。
@@ -272,7 +273,7 @@ go run ./cmd/node export-state -identity bq/identity.json -out bq/state.json
 ### 9.4 验证 response
 
 ```bash
-go run ./cmd/node verify -state bq/state.json -response bq/response.json
+go run ./cmd/decentid verify -state bq/state.json -response bq/response.json
 ```
 
 输出为：
@@ -296,14 +297,14 @@ root rotate 会更换控制身份的 active root key，但 **不会改变 DID**�
 执行：
 
 ```bash
-go run ./cmd/node rotate-root -identity bq/identity.json -label rotated-root
+go run ./cmd/decentid rotate-root -identity bq/identity.json -label rotated-root
 ```
 
 然后查看：
 
 ```bash
-go run ./cmd/node keys -identity bq/identity.json
-go run ./cmd/node show -identity bq/identity.json
+go run ./cmd/decentid keys -identity bq/identity.json
+go run ./cmd/decentid show -identity bq/identity.json
 ```
 
 你应当关注：
@@ -324,8 +325,8 @@ attestation 是独立对象，不会直接塞进 identity document 正文里。�
 ### 11.1 创建 issuer 和 subject 身份
 
 ```bash
-go run ./cmd/node create -name issuer -out bq/issuer.json
-go run ./cmd/node create -name alice -out bq/alice.json
+go run ./cmd/decentid create -name issuer -out bq/issuer.json
+go run ./cmd/decentid create -name alice -out bq/alice.json
 ```
 
 先用 `show` 查看 `bq/alice.json` 里的 DID，记作 `<subjectDID>`。
@@ -333,7 +334,7 @@ go run ./cmd/node create -name alice -out bq/alice.json
 ### 11.2 签发 attestation
 
 ```bash
-go run ./cmd/node issue-attestation \
+go run ./cmd/decentid issue-attestation \
   -identity bq/issuer.json \
   -subject "<subjectDID>" \
   -claim-type known \
@@ -349,7 +350,7 @@ go run ./cmd/node issue-attestation \
 ### 11.3 验证 attestation
 
 ```bash
-go run ./cmd/node verify-attestation -issuer bq/issuer.json -attestation bq/attestation.json
+go run ./cmd/decentid verify-attestation -issuer bq/issuer.json -attestation bq/attestation.json
 ```
 
 会输出校验结果。
@@ -357,7 +358,7 @@ go run ./cmd/node verify-attestation -issuer bq/issuer.json -attestation bq/atte
 ### 11.4 把 attestation 附着到 subject 身份
 
 ```bash
-go run ./cmd/node attach-attestation -identity bq/alice.json -attestation bq/attestation.json
+go run ./cmd/decentid attach-attestation -identity bq/alice.json -attestation bq/attestation.json
 ```
 
 这一步会做两件事：
@@ -368,7 +369,7 @@ go run ./cmd/node attach-attestation -identity bq/alice.json -attestation bq/att
 附着后可以再执行：
 
 ```bash
-go run ./cmd/node show -identity bq/alice.json
+go run ./cmd/decentid show -identity bq/alice.json
 ```
 
 检查 `attestationRefs`。
@@ -380,7 +381,7 @@ go run ./cmd/node show -identity bq/alice.json
 在终端 A 执行：
 
 ```bash
-go run ./cmd/node publish -identity bq/identity.json -wait 10m
+go run ./cmd/decentid publish -identity bq/identity.json -wait 10m
 ```
 
 它会打印当前节点监听地址，例如：
@@ -400,7 +401,7 @@ go run ./cmd/node publish -identity bq/identity.json -wait 10m
 如果不想发布 attestation 对象：
 
 ```bash
-go run ./cmd/node publish -identity bq/identity.json -wait 10m -include-attestations=false
+go run ./cmd/decentid publish -identity bq/identity.json -wait 10m -include-attestations=false
 ```
 
 ### 12.2 从远端解析身份状态
@@ -408,7 +409,7 @@ go run ./cmd/node publish -identity bq/identity.json -wait 10m -include-attestat
 在终端 B 执行：
 
 ```bash
-go run ./cmd/node resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
+go run ./cmd/decentid resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
 ```
 
 这会输出远端返回的 signed identity state。
@@ -428,40 +429,40 @@ go run ./cmd/node resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
 ### 13.1 创建身份
 
 ```bash
-go run ./cmd/node create -name alice -out bq/identity.json
+go run ./cmd/decentid create -name alice -out bq/identity.json
 ```
 
 ### 13.2 添加一条 public memory
 
 ```bash
-go run ./cmd/node add-memory -identity bq/identity.json -type note -payload "hello public"
+go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "hello public"
 ```
 
 ### 13.3 添加一条 private memory
 
 ```bash
-go run ./cmd/node add-memory -identity bq/identity.json -type note -payload "secret note" -visibility private
+go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "secret note" -visibility private
 ```
 
 ### 13.4 增加一个设备
 
 ```bash
-go run ./cmd/node add-device -identity bq/identity.json -label phone
+go run ./cmd/decentid add-device -identity bq/identity.json -label phone
 ```
 
 ### 13.5 跑 challenge-response
 
 ```bash
-go run ./cmd/node export-state -identity bq/identity.json -out bq/state.json
-go run ./cmd/node challenge -id "did:p2p:..." -out bq/challenge.json
-go run ./cmd/node respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
-go run ./cmd/node verify -state bq/state.json -response bq/response.json
+go run ./cmd/decentid export-state -identity bq/identity.json -out bq/state.json
+go run ./cmd/decentid challenge -id "did:p2p:..." -out bq/challenge.json
+go run ./cmd/decentid respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
+go run ./cmd/decentid verify -state bq/state.json -response bq/response.json
 ```
 
 ### 13.6 rotate root
 
 ```bash
-go run ./cmd/node rotate-root -identity bq/identity.json -label rotated-root
+go run ./cmd/decentid rotate-root -identity bq/identity.json -label rotated-root
 ```
 
 ### 13.7 发布并远端解析
@@ -469,13 +470,13 @@ go run ./cmd/node rotate-root -identity bq/identity.json -label rotated-root
 终端 A：
 
 ```bash
-go run ./cmd/node publish -identity bq/identity.json -wait 10m
+go run ./cmd/decentid publish -identity bq/identity.json -wait 10m
 ```
 
 终端 B：
 
 ```bash
-go run ./cmd/node resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
+go run ./cmd/decentid resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
 ```
 
 ## 14. 文件说明

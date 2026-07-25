@@ -12,6 +12,19 @@
 
 详细的第二版实现规划、关键文件、验收清单见 [`PLAN.md`](./PLAN.md)。
 
+## 核心心智模型（先读这个）
+
+觉得概念多？其实**核心只有 3 个**，其余都是可选叠加：
+
+1. **身份 = 一把密钥** —— `DID = did:p2p:<hash(root 公钥)>`，第一次生成后永久不变。
+2. **连续性 = 一条签名的变更链** —— 改动只追加、逐条验签、回放重算，可演化但不可伪造。
+3. **登录 = 证明握着密钥** —— 验证方出题、你签名作答、对方用你的公开名片验签。
+
+剩下的 memory（内容）、attestation（他人背书）、P2P（点对点分享）、加密备份都是**可选扩展**，不用就忽略。
+
+> 一句话：**身份是一把密钥，历史是一条签名链，登录是一次签名。**
+> 完整的大白话讲解 + 术语对照表见 [`doc/概念模型.md`](./doc/概念模型.md)。
+
 ## 当前状态
 
 ### 第一版已跑通
@@ -33,20 +46,25 @@
 
 ## 当前已实现
 
-- Ed25519 root key / device key
-- X25519 encryption key
-- `did:p2p:<hash(rootPublicKey)>` 身份生成
-- append-only identity event chain
-- 基于 event replay 的状态验证
-- 本地 keyring 导入导出（`localKeys` + preferred key IDs）
-- device add / revoke
-- root rotate（DID 保持不变）
-- public memory manifest / object
-- private memory 加密、private memory root、本地解密
-- challenge-response 身份验证
-- standalone attestation 签发 / 验证 / 附着
-- libp2p 远端 state 解析与对象拉取
-- CLI 原型
+> 按「核心 / 可选扩展」分组——核心是地基，扩展可按需取用。术语见 [`doc/概念模型.md`](./doc/概念模型.md)。
+
+**核心（身份 + 连续性 + 登录）**
+
+- `did:p2p:<hash(rootPublicKey)>` 身份生成（Ed25519 root / device key、X25519 encryption key）
+- append-only identity event chain（变更链）
+- 基于 event replay 的状态验证（回放重算）
+- 本地 keyring 导入导出（`localKeys` + preferred key IDs）与公开 state 二分
+- device add / revoke、root rotate（DID 保持不变）
+- challenge-response 身份验证（登录验证）
+
+**可选扩展**
+
+- public memory manifest / object（公开内容）
+- private memory 加密、private memory root、本地解密（只有我能看）
+- standalone attestation 签发 / 验证 / 附着（他人背书）
+- libp2p 远端 state 解析与对象拉取（点对点分享）
+- 口令加密备份 / 恢复
+- CLI 原型 + 浏览器操作台（简单模式 / 高级模式）
 
 ## 当前未实现
 
@@ -57,7 +75,9 @@
 - 完整的 trust / reputation policy
 - 生产级密钥托管、恢复与硬件保护
 
-## 协议关键规则
+## 协议关键规则（进阶）
+
+> 以下是协议细节与设计取舍，日常使用不必读；只想理解整体模型看 [`doc/概念模型.md`](./doc/概念模型.md) 即可。
 
 ### DID 来自首次 root public key
 
@@ -116,8 +136,8 @@ attestation 的流转是：
 
 ## 代码结构
 
-- `cmd/node/`：CLI 入口
-- `cmd/web/`：本地浏览器操作台入口
+- `cmd/decentid/`：统一单二进制入口（`web` 子命令 + 全部 node 子命令）
+- `internal/cli/`：node / web 子命令的实现，供统一入口调用
 - `pkg/types/`：共享结构定义
 - `internal/crypto/`：Ed25519、X25519、哈希、canonical JSON
 - `internal/identity/`：身份创建、事件链、回放验证、本地 keyring
@@ -138,48 +158,73 @@ attestation 的流转是：
 go mod tidy
 ```
 
+## 构建单一二进制
+
+项目是纯 Go、无 CGO；Web 模板与静态资源通过 `go:embed` 打进二进制，运行时不依赖任何外部文件，因此可以编出一个自包含的单文件 `decentid`。
+
+```bash
+# 当前平台 -> dist/decentid[.exe]
+scripts/build.sh
+
+# 跨平台发布矩阵（linux/darwin/windows × amd64/arm64）-> dist/
+scripts/build.sh all
+
+# 或直接用 go build
+CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o decentid ./cmd/decentid
+```
+
+统一二进制用法：
+
+```bash
+decentid web -identity alice.json -addr 127.0.0.1:8080   # 启动本地操作台
+decentid create -name alice -out alice.json              # 其余子命令即原 CLI
+decentid version
+```
+
+下文示例中的 `go run ./cmd/decentid ...` 与已构建的 `decentid ...` 可互换。
+
 ## 快速开始
 
 ### 1. 创建身份
 
 ```bash
-go run ./cmd/node create -name alice -out alice.json
+go run ./cmd/decentid create -name alice -out alice.json
 ```
 
 ### 2. 查看身份
 
 ```bash
-go run ./cmd/node show -identity alice.json
+go run ./cmd/decentid show -identity alice.json
 ```
 
 ### 3. 添加 public memory
 
 ```bash
-go run ./cmd/node add-memory -identity alice.json -type note -payload "hello public"
+go run ./cmd/decentid add-memory -identity alice.json -type note -payload "hello public"
 ```
 
 ### 4. 添加 private memory
 
 ```bash
-go run ./cmd/node add-memory -identity alice.json -type note -payload "secret memory" -visibility private
-go run ./cmd/node show-memory -identity alice.json -memory <memoryCID>.json
+go run ./cmd/decentid add-memory -identity alice.json -type note -payload "secret memory" -visibility private
+go run ./cmd/decentid show-memory -identity alice.json -memory <memoryCID>.json
 ```
 
 ### 5. 添加 / 撤销设备
 
 ```bash
-go run ./cmd/node add-device -identity alice.json -label laptop
-go run ./cmd/node keys -identity alice.json
-go run ./cmd/node revoke-device -identity alice.json -key-id <deviceKeyId> -reason "lost"
+go run ./cmd/decentid add-device -identity alice.json -label laptop
+go run ./cmd/decentid keys -identity alice.json
+go run ./cmd/decentid revoke-device -identity alice.json -key-id <deviceKeyId> -reason "lost"
 ```
 
 ### 6. challenge-response
 
 ```bash
-go run ./cmd/node export-state -identity alice.json -out alice-state.json
-go run ./cmd/node challenge -id "did:p2p:..." -out challenge.json
-go run ./cmd/node respond -identity alice.json -challenge challenge.json -out response.json
-go run ./cmd/node verify -state alice-state.json -response response.json
+go run ./cmd/decentid export-state -identity alice.json -out alice-state.json
+go run ./cmd/decentid challenge -id "did:p2p:..." -out challenge.json
+go run ./cmd/decentid respond -identity alice.json -challenge challenge.json -out response.json
+go run ./cmd/decentid verify -state alice-state.json -response response.json
 ```
 
 `alice.json` 是本地私有身份文件，不应该交给验证方；验证方使用公开的 `alice-state.json` 验证 response。
@@ -187,22 +232,22 @@ go run ./cmd/node verify -state alice-state.json -response response.json
 显式指定设备 key：
 
 ```bash
-go run ./cmd/node respond -identity alice.json -challenge challenge.json -signer-key-id <deviceKeyId> -out response.json
+go run ./cmd/decentid respond -identity alice.json -challenge challenge.json -signer-key-id <deviceKeyId> -out response.json
 ```
 
 ### 7. rotate root
 
 ```bash
-go run ./cmd/node rotate-root -identity alice.json -label rotated-root
-go run ./cmd/node show -identity alice.json
+go run ./cmd/decentid rotate-root -identity alice.json -label rotated-root
+go run ./cmd/decentid show -identity alice.json
 ```
 
 ### 8. attestation
 
 ```bash
-go run ./cmd/node issue-attestation -identity issuer.json -subject "did:p2p:..." -claim-type known -claim-value alice -out attestation.json
-go run ./cmd/node verify-attestation -issuer issuer.json -attestation attestation.json
-go run ./cmd/node attach-attestation -identity alice.json -attestation attestation.json
+go run ./cmd/decentid issue-attestation -identity issuer.json -subject "did:p2p:..." -claim-type known -claim-value alice -out attestation.json
+go run ./cmd/decentid verify-attestation -issuer issuer.json -attestation attestation.json
+go run ./cmd/decentid attach-attestation -identity alice.json -attestation attestation.json
 ```
 
 ### 9. P2P publish / resolve
@@ -210,19 +255,19 @@ go run ./cmd/node attach-attestation -identity alice.json -attestation attestati
 终端 A：
 
 ```bash
-go run ./cmd/node publish -identity alice.json -wait 10m
+go run ./cmd/decentid publish -identity alice.json -wait 10m
 ```
 
 如果不想发布已附着 attestation：
 
 ```bash
-go run ./cmd/node publish -identity alice.json -wait 10m -include-attestations=false
+go run ./cmd/decentid publish -identity alice.json -wait 10m -include-attestations=false
 ```
 
 终端 B：
 
 ```bash
-go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
+go run ./cmd/decentid resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 ```
 
 当前 publish 行为：
@@ -236,10 +281,25 @@ go run ./cmd/node resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 可以启动一个仅监听本机的浏览器操作界面：
 
 ```bash
-go run ./cmd/web -identity alice.json -addr 127.0.0.1:8080
+go run ./cmd/decentid web -identity alice.json -addr 127.0.0.1:8080
 ```
 
-打开输出的本地 URL 后，可通过页面完成：
+界面分两层：
+
+### 简单模式（默认，面向大众）
+
+打开本地 URL 即进入零术语的简单界面，底部 tab 导航「我 / 证明 / 内容 / 设备 / 备份」：
+- **我**：30 秒创建身份；头像 + 名字 + 「我的身份码」（短 DID，可复制、可出示二维码）。
+- **证明我是我**：一个按钮一键自检（内部 challenge→respond→verify，给出 ✓/✗），无需任何 JSON 粘贴；要给别人验证时导出公开名片或出示身份码二维码。
+- **我的内容**：写公开/「只有我能看」（加密）内容，列表展示，私有项点「查看」即时解密。
+- **我的设备**：友好的设备列表，一键「移除」（撤销）。
+- **备份与恢复**：用口令导出加密备份文件、用文件+口令一键恢复（scrypt + AES-256-GCM）。
+
+身份码二维码由本地 `/api/qr` 服务端生成（仅同源 PNG）。
+
+### 高级模式（协议控制台）
+
+原 7 页协议操作台移到 `/advanced`，保留全部底层能力（DID/CID/manifest/multiaddr/JSON）：
 - 创建身份、查看公开 signed state、导出 verifier 可用 state
 - 添加 public / private memory，并显式解密查看 private memory
 - 添加 / 撤销 device，rotate root
@@ -247,14 +307,19 @@ go run ./cmd/web -identity alice.json -addr 127.0.0.1:8080
 - issue / verify / attach attestation
 - publish / resolve P2P public state
 
+简单模式右上角「高级」可进入 `/advanced`，高级模式侧栏可返回简单模式。
+
 安全边界：
 - Web 操作台默认拒绝非 loopback 绑定和非 localhost Host
 - 默认 API 不返回 `localKeys` 或私钥字节
 - private memory 只有用户点击 reveal 时才显示明文
 - publish 仍只发布 signed identity state、public memory 和可选 attached attestation，不发布 private memory
+- 备份文件用口令派生密钥（scrypt）+ AES-256-GCM 加密，口令错误或文件被篡改都无法恢复
 
 ## CLI 命令速查
 
+- `web`（启动本地操作台）
+- `version`
 - `create`
 - `show`
 - `export-state`
@@ -359,8 +424,9 @@ go vet ./...
 - root rotation 后 DID 保持不变
 - revoked device 无法继续用于 challenge 签名
 - private memory 不暴露明文且可本地解密
-- attestation 签名与过期校验
+- attestation 签名、未生效（validFrom）与过期校验
 - P2P 远端 state / object 拉取
+- 验证层对抗性拒绝：伪造 DID（与 root 公钥不符）、由非 root key 签名的管理事件、回填时间戳、对端返回与 CID 不符的对象，均被拒绝
 
 ## 已知限制
 

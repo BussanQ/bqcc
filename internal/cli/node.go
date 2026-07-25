@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -15,59 +15,70 @@ import (
 	"github.com/example/decentid/internal/identity"
 	"github.com/example/decentid/internal/memory"
 	"github.com/example/decentid/internal/p2p"
+	"github.com/example/decentid/internal/storage"
 	"github.com/example/decentid/pkg/types"
 	"github.com/libp2p/go-libp2p/core/peer"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		usage()
+// RunNode dispatches a node subcommand. args is the argument slice starting
+// with the subcommand name (e.g. ["create", "-name", "alice"]).
+func RunNode(args []string) {
+	if len(args) < 1 {
+		Usage()
 		os.Exit(1)
 	}
 
-	switch os.Args[1] {
+	switch args[0] {
 	case "create":
-		runCreate(os.Args[2:])
+		runCreate(args[1:])
 	case "add-memory":
-		runAddMemory(os.Args[2:])
+		runAddMemory(args[1:])
 	case "show-memory":
-		runShowMemory(os.Args[2:])
+		runShowMemory(args[1:])
 	case "show":
-		runShow(os.Args[2:])
+		runShow(args[1:])
 	case "export-state":
-		runExportState(os.Args[2:])
+		runExportState(args[1:])
 	case "keys":
-		runKeys(os.Args[2:])
+		runKeys(args[1:])
 	case "add-device":
-		runAddDevice(os.Args[2:])
+		runAddDevice(args[1:])
 	case "revoke-device":
-		runRevokeDevice(os.Args[2:])
+		runRevokeDevice(args[1:])
 	case "rotate-root":
-		runRotateRoot(os.Args[2:])
+		runRotateRoot(args[1:])
 	case "issue-attestation":
-		runIssueAttestation(os.Args[2:])
+		runIssueAttestation(args[1:])
 	case "verify-attestation":
-		runVerifyAttestation(os.Args[2:])
+		runVerifyAttestation(args[1:])
 	case "attach-attestation":
-		runAttachAttestation(os.Args[2:])
+		runAttachAttestation(args[1:])
 	case "challenge":
-		runChallenge(os.Args[2:])
+		runChallenge(args[1:])
 	case "respond":
-		runRespond(os.Args[2:])
+		runRespond(args[1:])
 	case "verify":
-		runVerify(os.Args[2:])
+		runVerify(args[1:])
 	case "publish":
-		runPublish(os.Args[2:])
+		runPublish(args[1:])
 	case "resolve":
-		runResolve(os.Args[2:])
+		runResolve(args[1:])
 	default:
-		usage()
+		Usage()
 		os.Exit(1)
 	}
 }
 
-func usage() {
-	fmt.Println("decentid node commands: create | add-memory | show-memory | show | export-state | keys | add-device | revoke-device | rotate-root | issue-attestation | verify-attestation | attach-attestation | challenge | respond | verify | publish | resolve")
+// Usage prints the full command list for the unified decentid binary.
+func Usage() {
+	fmt.Println("decentid commands:")
+	fmt.Println("  web                  start the localhost web console")
+	fmt.Println("  create | show | export-state | keys")
+	fmt.Println("  add-memory | show-memory")
+	fmt.Println("  add-device | revoke-device | rotate-root")
+	fmt.Println("  issue-attestation | verify-attestation | attach-attestation")
+	fmt.Println("  challenge | respond | verify")
+	fmt.Println("  publish | resolve")
 }
 
 func runCreate(args []string) {
@@ -346,7 +357,7 @@ func runPublish(args []string) {
 
 	state := id.SignedState()
 	must(resolver.PublishState(ctx, state))
-	storeReferencedObjects(resolver, *file, state, *includeAttestations)
+	storage.StoreReferencedObjects(resolver, *file, state, *includeAttestations)
 	fmt.Println(strings.Join(resolver.AddrStrings(), "\n"))
 	<-ctx.Done()
 }
@@ -371,39 +382,8 @@ func runResolve(args []string) {
 	printJSON(state)
 }
 
-func storeReferencedObjects(resolver *p2p.Resolver, identityFile string, state types.SignedIdentityState, includeAttestations bool) {
-	baseDir := filepath.Dir(identityFile)
-	if state.Document.PublicMemoryRoot != "" {
-		manifestFile := filepath.Join(baseDir, state.Document.PublicMemoryRoot+".json")
-		if data, err := os.ReadFile(manifestFile); err == nil {
-			resolver.StoreObject(state.Document.PublicMemoryRoot, data)
-			var manifest types.MemoryManifest
-			if err := json.Unmarshal(data, &manifest); err == nil {
-				for _, cid := range manifest.Items {
-					memoryFile := filepath.Join(baseDir, cid+".json")
-					if payload, err := os.ReadFile(memoryFile); err == nil {
-						resolver.StoreObject(cid, payload)
-					}
-				}
-			}
-		}
-	}
-	if includeAttestations {
-		for _, cid := range state.Document.AttestationRefs {
-			attFile := filepath.Join(baseDir, cid+".json")
-			if data, err := os.ReadFile(attFile); err == nil {
-				resolver.StoreObject(cid, data)
-			}
-		}
-	}
-}
-
 func loadIdentity(path string) *identity.Identity {
-	data, err := os.ReadFile(path)
-	must(err)
-	local, err := identity.UnmarshalLocal(data)
-	must(err)
-	id, err := identity.FromLocal(local)
+	id, err := storage.LoadIdentity(path)
 	must(err)
 	return id
 }
@@ -418,21 +398,15 @@ func loadSignedState(path string) types.SignedIdentityState {
 }
 
 func saveIdentity(path string, id *identity.Identity) {
-	data, err := identity.MarshalLocal(id.ExportLocal())
-	must(err)
-	must(os.WriteFile(path, data, 0o600))
+	must(storage.SaveIdentity(path, id))
 }
 
 func readJSON(path string, out interface{}) {
-	data, err := os.ReadFile(path)
-	must(err)
-	must(json.Unmarshal(data, out))
+	must(storage.ReadJSON(path, out))
 }
 
 func writeJSON(path string, value interface{}) {
-	data, err := json.MarshalIndent(value, "", "  ")
-	must(err)
-	must(os.WriteFile(path, data, 0o600))
+	must(storage.WriteJSON(path, value))
 }
 
 func printJSON(value interface{}) {

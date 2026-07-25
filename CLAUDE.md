@@ -30,10 +30,11 @@ This repository is a Go prototype for a decentralized identity system:
 - `internal/auth/`: challenge-response signing and verification
 - `internal/attestation/`: attestation creation, signing, verification
 - `internal/p2p/`: libp2p resolver for state/object exchange
-- `internal/app/`: application service layer shared by user interfaces
-- `internal/web/`: localhost web operation console handlers, templates, and static assets
-- `cmd/node/`: CLI prototype
-- `cmd/web/`: browser-based local operation console
+- `internal/storage/`: shared filesystem helpers (JSON read/write, local identity load/save, loading referenced objects into a resolver), used by the CLI and the service layer
+- `internal/app/`: application service layer shared by user interfaces (incl. `SelfCheck`, `ListNotes`, passphrase `ExportBackup`/`ImportBackup`)
+- `internal/web/`: localhost web console — a consumer-facing **simple mode** at the root plus the full protocol **advanced console** under `/advanced`; handlers, templates, static assets, and a server-side `/api/qr` PNG endpoint
+- `internal/cli/`: node/web subcommand implementations behind the unified entrypoint
+- `cmd/decentid/`: the single binary entrypoint (`web` subcommand plus all node subcommands)
 
 ## Implementation guidance
 
@@ -52,6 +53,8 @@ This repository is a Go prototype for a decentralized identity system:
 - Hashing uses SHA-256.
 - Signing uses Ed25519.
 - Encryption for private memory uses X25519 key agreement plus AES-GCM.
+- Encrypted identity backup uses scrypt-derived keys plus AES-256-GCM (`internal/crypto` `EncryptWithPassphrase`/`DecryptWithPassphrase`).
+- The web simple mode adds one direct dependency, `github.com/skip2/go-qrcode` (pure Go), for the `/api/qr` endpoint.
 - Local identity files contain a keyring (`localKeys`) plus preferred root/device/encryption key IDs.
 - `publish` includes public memory objects and can include attached attestations.
 - `publish` does **not** publish private memory objects by default.
@@ -106,6 +109,8 @@ go vet ./...
 ## Documentation rule
 
 If you change CLI behavior, public protocol semantics, or package layout, update `README.md` and this file together.
+
+User-facing concepts and plain-language terminology have a single source of truth: `doc/概念模型.md` (its 行话→大白话 glossary). When adding user-facing copy (web simple mode, product docs), keep terms consistent with that table; framing should lead with the 3 core concepts (identity=key, continuity=signed event chain, login=signature) and treat memory/attestation/P2P/backup as optional extensions.
 
 ## Next likely work items
 

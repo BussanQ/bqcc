@@ -91,6 +91,41 @@ func TestResolverPublishesAndResolvesStateAndObjects(t *testing.T) {
 	}
 }
 
+// Fix 5b: a peer that serves bytes whose content does not hash to the
+// requested CID must be rejected, and the bad payload must not be cached.
+func TestResolveObjectRemoteRejectsCIDMismatch(t *testing.T) {
+	obj, err := memory.NewObject("note", "honest", types.VisibilityPublic, nil, nil)
+	if err != nil {
+		t.Fatalf("new object: %v", err)
+	}
+	tampered := obj
+	tampered.Payload = "tampered"
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	publisher, err := NewResolver(ctx, "/ip4/127.0.0.1/tcp/0")
+	if err != nil {
+		t.Fatalf("new publisher resolver: %v", err)
+	}
+	defer publisher.Close()
+	subscriber, err := NewResolver(ctx, "/ip4/127.0.0.1/tcp/0")
+	if err != nil {
+		t.Fatalf("new subscriber resolver: %v", err)
+	}
+	defer subscriber.Close()
+
+	publisher.StoreObject(obj.CID, mustJSON(tampered, t))
+	if err := subscriber.DialPeer(ctx, publisher.AddrStrings()[0]); err != nil {
+		t.Fatalf("dial peer: %v", err)
+	}
+	if _, err := subscriber.ResolveObjectRemote(ctx, publisher.Host().ID(), obj.CID); err == nil {
+		t.Fatalf("expected integrity check to reject tampered object")
+	}
+	if _, ok := subscriber.ResolveObjectLocal(obj.CID); ok {
+		t.Fatalf("tampered object should not be cached")
+	}
+}
+
 func mustJSON(value interface{}, t *testing.T) []byte {
 	t.Helper()
 	data, err := json.Marshal(value)

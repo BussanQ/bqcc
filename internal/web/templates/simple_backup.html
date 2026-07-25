@@ -1,0 +1,26 @@
+{{template "simple_shell_start" .}}
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-download"/></svg><span class="eyebrow">备份</span></div>
+  <h2>导出加密备份</h2>
+  <p class="muted">设一个口令，下载一个加密备份文件。换设备或重装时，用它和口令就能恢复你的身份。请妥善保管口令——丢了口令就无法恢复。</p>
+  <form method="POST" action="/api/backup/export">
+    <label>备份口令<input type="password" name="passphrase" placeholder="设置一个只有你知道的口令" required></label>
+    <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-download"/></svg>下载加密备份</button></div>
+  </form>
+</section>
+
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-upload"/></svg><span class="eyebrow">恢复</span></div>
+  <h2>从备份恢复</h2>
+  <p class="muted">选择此前导出的备份文件并输入当时的口令，即可恢复你的身份。<strong>这会覆盖当前身份。</strong></p>
+  <form class="confirm-form" method="POST" action="/api/backup/import" enctype="multipart/form-data" data-confirm="恢复会覆盖当前身份，确定继续？">
+    <label>备份文件<input type="file" name="backup" accept=".enc" required></label>
+    <label>备份口令<input type="password" name="passphrase" placeholder="导出时设置的口令" required></label>
+    <div class="form-actions"><button class="danger-button block" type="submit"><svg class="icon"><use href="#i-upload"/></svg>恢复身份</button></div>
+  </form>
+</section>
+
+<section class="simple-card">
+  <p class="callout">提示：备份文件已加密，没有口令的人拿到也无法使用。但请不要把口令和备份放在一起。</p>
+</section>
+{{template "simple_shell_end" .}}

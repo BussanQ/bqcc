@@ -83,17 +83,22 @@ func New(displayName string) (*Identity, error) {
 	}, nil
 }
 
-func NewEvent(eventType types.EventType, identityID, prevEventID, signerKeyID string, payload map[string]interface{}, priv ed25519.PrivateKey) (types.IdentityEvent, error) {
-	now := time.Now().UTC()
-	base := map[string]interface{}{
+// eventSigningBase builds the canonical pre-image signed/verified for an
+// identity event. Shared by NewEvent and VerifyEvent so they cannot drift.
+func eventSigningBase(eventType types.EventType, identityID, prevEventID, signerKeyID string, timestamp time.Time, payload map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
 		"type":        eventType,
 		"identityId":  identityID,
 		"prevEventId": prevEventID,
 		"signerKeyId": signerKeyID,
-		"timestamp":   now.Format(time.RFC3339Nano),
+		"timestamp":   timestamp.Format(time.RFC3339Nano),
 		"payload":     payload,
 	}
-	encoded, err := icrypto.CanonicalJSON(base)
+}
+
+func NewEvent(eventType types.EventType, identityID, prevEventID, signerKeyID string, payload map[string]interface{}, priv ed25519.PrivateKey) (types.IdentityEvent, error) {
+	now := time.Now().UTC()
+	encoded, err := icrypto.CanonicalJSON(eventSigningBase(eventType, identityID, prevEventID, signerKeyID, now, payload))
 	if err != nil {
 		return types.IdentityEvent{}, err
 	}
@@ -103,15 +108,7 @@ func NewEvent(eventType types.EventType, identityID, prevEventID, signerKeyID st
 }
 
 func VerifyEvent(event types.IdentityEvent, pub ed25519.PublicKey) bool {
-	base := map[string]interface{}{
-		"type":        event.Type,
-		"identityId":  event.IdentityID,
-		"prevEventId": event.PrevEventID,
-		"signerKeyId": event.SignerKeyID,
-		"timestamp":   event.Timestamp.Format(time.RFC3339Nano),
-		"payload":     event.Payload,
-	}
-	encoded, err := icrypto.CanonicalJSON(base)
+	encoded, err := icrypto.CanonicalJSON(eventSigningBase(event.Type, event.IdentityID, event.PrevEventID, event.SignerKeyID, event.Timestamp, event.Payload))
 	if err != nil {
 		return false
 	}
@@ -318,10 +315,16 @@ func ReplayState(events []types.IdentityEvent) (types.IdentityDocument, error) {
 			if !VerifyEvent(event, pub) {
 				return types.IdentityDocument{}, fmt.Errorf("invalid signature for event %s", event.ID)
 			}
+			if event.SignerKeyID != doc.RootKeyID {
+				return types.IdentityDocument{}, fmt.Errorf("event %s not signed by active root key", event.ID)
+			}
 			continue
 		}
 		if event.PrevEventID != events[idx-1].ID {
 			return types.IdentityDocument{}, fmt.Errorf("broken event chain at %s", event.ID)
+		}
+		if event.Timestamp.Before(events[idx-1].Timestamp) {
+			return types.IdentityDocument{}, fmt.Errorf("non-monotonic timestamp at event %s", event.ID)
 		}
 		pub, err := ResolveKey(doc, event.SignerKeyID)
 		if err != nil {
@@ -329,6 +332,11 @@ func ReplayState(events []types.IdentityEvent) (types.IdentityDocument, error) {
 		}
 		if !VerifyEvent(event, pub) {
 			return types.IdentityDocument{}, fmt.Errorf("invalid signature for event %s", event.ID)
+		}
+		// Management events must be signed by the active root key as it stands
+		// before this event is applied (RotateRootKey is signed by the old root).
+		if event.SignerKeyID != doc.RootKeyID {
+			return types.IdentityDocument{}, fmt.Errorf("event %s not signed by active root key", event.ID)
 		}
 		if err := applyEvent(&doc, event); err != nil {
 			return types.IdentityDocument{}, err
@@ -354,6 +362,13 @@ func initDocumentFromCreate(event types.IdentityEvent) (types.IdentityDocument, 
 	profileMap, ok := event.Payload["profile"].(map[string]interface{})
 	if !ok {
 		return types.IdentityDocument{}, errors.New("missing profile in create event")
+	}
+	rootPub, err := icrypto.ParsePublicKey(root.PublicKey)
+	if err != nil {
+		return types.IdentityDocument{}, fmt.Errorf("invalid root public key: %w", err)
+	}
+	if icrypto.DIDFromPublicKey(rootPub) != event.IdentityID {
+		return types.IdentityDocument{}, errors.New("identity id does not match root key")
 	}
 	profile := profileFromPayload(profileMap)
 	doc := types.IdentityDocument{ID: event.IdentityID, Version: "2", CreatedAt: event.Timestamp, UpdatedAt: event.Timestamp, RootKeyID: root.ID, ActiveKeys: []types.KeyRecord{root, device, encryption}, Profile: profile, LatestEventID: event.ID}

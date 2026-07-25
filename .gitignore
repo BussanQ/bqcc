@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 /bin/
+/dist/
 *.exe
 *.test
 *.out

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -13,10 +13,13 @@ import (
 	webui "github.com/example/decentid/internal/web"
 )
 
-func main() {
-	identityPath := flag.String("identity", app.DefaultIdentityPath, "本地私有身份文件")
-	addr := flag.String("addr", "127.0.0.1:8080", "本地 Web 操作台地址")
-	flag.Parse()
+// RunWeb starts the localhost web console. args is the flag slice that follows
+// the "web" subcommand (i.e. os.Args after the subcommand name).
+func RunWeb(args []string) {
+	fs := flag.NewFlagSet("web", flag.ExitOnError)
+	identityPath := fs.String("identity", app.DefaultIdentityPath, "本地私有身份文件")
+	addr := fs.String("addr", "127.0.0.1:8080", "本地 Web 操作台地址")
+	fs.Parse(args)
 
 	if !isLoopbackBind(*addr) {
 		fmt.Fprintln(os.Stderr, "拒绝绑定非 loopback 地址；本地私有操作台请使用 127.0.0.1")

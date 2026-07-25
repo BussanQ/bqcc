@@ -24,6 +24,24 @@ func TestAttestationSignAndVerify(t *testing.T) {
 	}
 }
 
+func TestAttestationNotYetValidFails(t *testing.T) {
+	pub, priv, err := icrypto.GenerateEd25519Keypair()
+	if err != nil {
+		t.Fatalf("generate keypair: %v", err)
+	}
+	att, err := New("did:p2p:issuer", "root-key", "did:p2p:subject", "known", map[string]interface{}{"value": "alice"}, time.Hour, "")
+	if err != nil {
+		t.Fatalf("new attestation: %v", err)
+	}
+	att.ValidFrom = time.Now().UTC().Add(time.Hour)
+	if err := Sign(&att, priv); err != nil {
+		t.Fatalf("sign attestation: %v", err)
+	}
+	if Verify(att, pub) {
+		t.Fatalf("expected not-yet-valid attestation verification to fail")
+	}
+}
+
 func TestExpiredAttestationFailsVerification(t *testing.T) {
 	pub, priv, err := icrypto.GenerateEd25519Keypair()
 	if err != nil {
