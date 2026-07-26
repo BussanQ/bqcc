@@ -8,6 +8,16 @@ import (
 	"github.com/example/decentid/pkg/types"
 )
 
+func TestNewIdentityImmediatelyMatchesReplay(t *testing.T) {
+	id, err := New("alice")
+	if err != nil {
+		t.Fatalf("new identity: %v", err)
+	}
+	if err := VerifyState(id.SignedState()); err != nil {
+		t.Fatalf("new identity should match replayed state: %v", err)
+	}
+}
+
 func TestIdentityIDsAreUniqueAndStable(t *testing.T) {
 	alice, err := New("alice")
 	if err != nil {

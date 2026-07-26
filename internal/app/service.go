@@ -146,6 +146,19 @@ type ResolveResult struct {
 	State types.SignedIdentityState `json:"state"`
 }
 
+type BackupScope string
+
+const (
+	BackupScopeComplete     BackupScope = "complete"
+	BackupScopeIdentityOnly BackupScope = "identity-only"
+)
+
+type BackupImportResult struct {
+	Version             string      `json:"version"`
+	Scope               BackupScope `json:"scope"`
+	RestoredObjectCount int         `json:"restoredObjectCount"`
+}
+
 func NewService(identityPath string) *Service {
 	if strings.TrimSpace(identityPath) == "" {
 		identityPath = DefaultIdentityPath
@@ -176,12 +189,17 @@ func (s *Service) Summary() (LocalSummary, error) {
 	return buildSummary(path, id), nil
 }
 
-func (s *Service) CreateIdentity(displayName, outPath string) (CreateIdentityResult, error) {
+func (s *Service) CreateIdentity(displayName, outPath string, overwrite bool) (CreateIdentityResult, error) {
 	if strings.TrimSpace(outPath) == "" {
 		outPath = s.IdentityPath()
 	}
 	if strings.TrimSpace(outPath) == "" {
 		return CreateIdentityResult{}, errors.New("需要提供身份输出路径")
+	}
+	if _, err := os.Stat(outPath); err == nil && !overwrite {
+		return CreateIdentityResult{}, fmt.Errorf("身份文件 %s 已存在；为保护本地钥匙串，默认不会覆盖", outPath)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return CreateIdentityResult{}, err
 	}
 	id, err := identity.New(displayName)
 	if err != nil {
@@ -242,6 +260,10 @@ func (s *Service) AddMemory(kind, payload string, visibility types.Visibility) (
 	if err != nil {
 		return MemoryResult{}, err
 	}
+	existing, err := storage.LoadCurrentMemoryObjects(identityPath, id.SignedState(), visibility)
+	if err != nil {
+		return MemoryResult{}, err
+	}
 
 	var obj types.MemoryObject
 	if visibility == types.VisibilityPrivate {
@@ -266,21 +288,12 @@ func (s *Service) AddMemory(kind, payload string, visibility types.Visibility) (
 	if err := memory.SignObject(&obj, rootPriv); err != nil {
 		return MemoryResult{}, err
 	}
-	manifest, err := memory.NewManifest(visibility, []types.MemoryObject{obj})
+	items := append(existing, obj)
+	manifest, err := memory.NewManifest(visibility, items)
 	if err != nil {
 		return MemoryResult{}, err
 	}
 	if err := memory.SignManifest(&manifest, rootPriv); err != nil {
-		return MemoryResult{}, err
-	}
-	if visibility == types.VisibilityPrivate {
-		if err := id.AddPrivateMemoryRoot(manifest.CID); err != nil {
-			return MemoryResult{}, err
-		}
-	} else if err := id.AddPublicMemoryRoot(manifest.CID); err != nil {
-		return MemoryResult{}, err
-	}
-	if err := storage.SaveIdentity(identityPath, id); err != nil {
 		return MemoryResult{}, err
 	}
 
@@ -291,6 +304,16 @@ func (s *Service) AddMemory(kind, payload string, visibility types.Visibility) (
 		return MemoryResult{}, err
 	}
 	if err := storage.WriteJSON(manifestFile, manifest); err != nil {
+		return MemoryResult{}, err
+	}
+	if visibility == types.VisibilityPrivate {
+		if err := id.AddPrivateMemoryRoot(manifest.CID); err != nil {
+			return MemoryResult{}, err
+		}
+	} else if err := id.AddPublicMemoryRoot(manifest.CID); err != nil {
+		return MemoryResult{}, err
+	}
+	if err := storage.SaveIdentity(identityPath, id); err != nil {
 		return MemoryResult{}, err
 	}
 	return MemoryResult{ObjectCID: obj.CID, ManifestCID: manifest.CID, ObjectFile: objectFile, ManifestFile: manifestFile, Visibility: visibility, Object: obj, Manifest: manifest}, nil
@@ -338,37 +361,40 @@ type NoteSummary struct {
 	File       string           `json:"file"`
 }
 
-// ListNotes enumerates memory objects stored next to the identity file. Because
-// AddMemory writes a fresh single-item manifest per note (no accumulation),
-// listing scans object files directly rather than reading a manifest.
-func (s *Service) ListNotes() ([]NoteSummary, error) {
-	path := s.IdentityPath()
-	baseDir := filepath.Dir(path)
-	entries, err := os.ReadDir(baseDir)
+type MemoryStatus struct {
+	LinkedPublic  int `json:"linkedPublic"`
+	LinkedPrivate int `json:"linkedPrivate"`
+	LegacyPublic  int `json:"legacyPublic"`
+	LegacyPrivate int `json:"legacyPrivate"`
+}
+
+type NotesOverview struct {
+	Notes  []NoteSummary `json:"notes"`
+	Status MemoryStatus  `json:"status"`
+}
+
+type ConsolidateMemoryResult struct {
+	PublicAdded        int    `json:"publicAdded"`
+	PrivateAdded       int    `json:"privateAdded"`
+	PublicManifestCID  string `json:"publicManifestCid,omitempty"`
+	PrivateManifestCID string `json:"privateManifestCid,omitempty"`
+}
+
+func (s *Service) NotesOverview() (NotesOverview, error) {
+	id, path, err := s.loadIdentityWithPath()
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return []NoteSummary{}, nil
+			return NotesOverview{Notes: []NoteSummary{}}, nil
 		}
-		return nil, err
+		return NotesOverview{}, err
 	}
-	identityName := filepath.Base(path)
-	notes := []NoteSummary{}
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == identityName || !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		full := filepath.Join(baseDir, entry.Name())
-		var obj types.MemoryObject
-		if err := storage.ReadJSON(full, &obj); err != nil {
-			continue
-		}
-		// A memory object always carries a CID, a type, and either a plaintext
-		// payload or ciphertext. Manifests, attestations, states and challenges
-		// lack a "type" field and are skipped.
-		if obj.CID == "" || obj.Type == "" || (obj.Payload == "" && obj.Ciphertext == "") {
-			continue
-		}
-		note := NoteSummary{CID: obj.CID, Type: obj.Type, CreatedAt: obj.CreatedAt, Visibility: obj.Visibility, File: full}
+	inventory, err := storage.InspectMemory(path, id.SignedState())
+	if err != nil {
+		return NotesOverview{}, err
+	}
+	notes := make([]NoteSummary, 0, len(inventory.Public)+len(inventory.Private))
+	for _, obj := range append(inventory.Public, inventory.Private...) {
+		note := NoteSummary{CID: obj.CID, Type: obj.Type, CreatedAt: obj.CreatedAt, Visibility: obj.Visibility, File: filepath.Join(filepath.Dir(path), obj.CID+".json")}
 		if obj.Visibility == types.VisibilityPrivate || obj.Encryption != nil {
 			note.Locked = true
 		} else {
@@ -377,7 +403,86 @@ func (s *Service) ListNotes() ([]NoteSummary, error) {
 		notes = append(notes, note)
 	}
 	sort.Slice(notes, func(i, j int) bool { return notes[i].CreatedAt.After(notes[j].CreatedAt) })
-	return notes, nil
+	return NotesOverview{
+		Notes: notes,
+		Status: MemoryStatus{
+			LinkedPublic:  len(inventory.Public),
+			LinkedPrivate: len(inventory.Private),
+			LegacyPublic:  len(inventory.LegacyPublic),
+			LegacyPrivate: len(inventory.LegacyPrivate),
+		},
+	}, nil
+}
+
+func (s *Service) ListNotes() ([]NoteSummary, error) {
+	overview, err := s.NotesOverview()
+	return overview.Notes, err
+}
+
+func (s *Service) MemoryStatus() (MemoryStatus, error) {
+	overview, err := s.NotesOverview()
+	return overview.Status, err
+}
+
+func (s *Service) ConsolidateLegacyMemory() (ConsolidateMemoryResult, error) {
+	id, path, err := s.loadIdentityWithPath()
+	if err != nil {
+		return ConsolidateMemoryResult{}, err
+	}
+	inventory, err := storage.InspectMemory(path, id.SignedState())
+	if err != nil {
+		return ConsolidateMemoryResult{}, err
+	}
+	if len(inventory.LegacyPublic)+len(inventory.LegacyPrivate) == 0 {
+		return ConsolidateMemoryResult{}, nil
+	}
+	rootPriv, err := id.PreferredRootPrivateKey()
+	if err != nil {
+		return ConsolidateMemoryResult{}, err
+	}
+
+	result := ConsolidateMemoryResult{}
+	groups := []struct {
+		visibility types.Visibility
+		current    []types.MemoryObject
+		legacy     []types.MemoryObject
+	}{
+		{types.VisibilityPublic, inventory.Public, inventory.LegacyPublic},
+		{types.VisibilityPrivate, inventory.Private, inventory.LegacyPrivate},
+	}
+	for _, group := range groups {
+		if len(group.legacy) == 0 {
+			continue
+		}
+		items := append(append([]types.MemoryObject(nil), group.current...), group.legacy...)
+		manifest, err := memory.NewManifest(group.visibility, items)
+		if err != nil {
+			return ConsolidateMemoryResult{}, err
+		}
+		if err := memory.SignManifest(&manifest, rootPriv); err != nil {
+			return ConsolidateMemoryResult{}, err
+		}
+		if err := storage.WriteJSON(filepath.Join(filepath.Dir(path), manifest.CID+".json"), manifest); err != nil {
+			return ConsolidateMemoryResult{}, err
+		}
+		if group.visibility == types.VisibilityPrivate {
+			if err := id.AddPrivateMemoryRoot(manifest.CID); err != nil {
+				return ConsolidateMemoryResult{}, err
+			}
+			result.PrivateAdded = len(group.legacy)
+			result.PrivateManifestCID = manifest.CID
+		} else {
+			if err := id.AddPublicMemoryRoot(manifest.CID); err != nil {
+				return ConsolidateMemoryResult{}, err
+			}
+			result.PublicAdded = len(group.legacy)
+			result.PublicManifestCID = manifest.CID
+		}
+	}
+	if err := storage.SaveIdentity(path, id); err != nil {
+		return ConsolidateMemoryResult{}, err
+	}
+	return result, nil
 }
 
 // SelfCheck proves the current device controls this identity by running a full
@@ -398,37 +503,65 @@ func (s *Service) SelfCheck() (VerificationResult, error) {
 	return VerifyChallengeResponse(id.SignedState(), response), nil
 }
 
-// ExportBackup returns the local identity file encrypted with a passphrase,
-// suitable for the user to download and store safely.
+// ExportBackup returns a complete, versioned local backup encrypted with a
+// passphrase. It includes the keyring and every object currently referenced by
+// the identity.
 func (s *Service) ExportBackup(passphrase string) ([]byte, error) {
 	if strings.TrimSpace(passphrase) == "" {
 		return nil, errors.New("需要设置备份口令")
 	}
-	data, err := os.ReadFile(s.IdentityPath())
+	id, path, err := s.loadIdentityWithPath()
+	if err != nil {
+		return nil, err
+	}
+	inventory, err := storage.InspectMemory(path, id.SignedState())
+	if err != nil {
+		return nil, err
+	}
+	legacyCount := len(inventory.LegacyPublic) + len(inventory.LegacyPrivate)
+	if legacyCount > 0 {
+		return nil, fmt.Errorf("发现 %d 条旧版本地内容尚未纳入当前内容目录，请先在“我的内容”中整理后再备份", legacyCount)
+	}
+	bundle, err := storage.NewBackupBundle(path, id)
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(bundle)
 	if err != nil {
 		return nil, err
 	}
 	return icrypto.EncryptWithPassphrase(data, passphrase)
 }
 
-// ImportBackup decrypts a passphrase-protected backup, verifies it is a valid
-// identity, and restores it to the local identity path.
-func (s *Service) ImportBackup(data []byte, passphrase string) error {
+// ImportBackup restores a v2 complete backup or a legacy identity-only backup.
+func (s *Service) ImportBackup(data []byte, passphrase string) (BackupImportResult, error) {
 	if strings.TrimSpace(passphrase) == "" {
-		return errors.New("需要输入备份口令")
+		return BackupImportResult{}, errors.New("需要输入备份口令")
 	}
 	plaintext, err := icrypto.DecryptWithPassphrase(data, passphrase)
 	if err != nil {
-		return errors.New("备份口令不正确或文件已损坏")
+		return BackupImportResult{}, errors.New("备份口令不正确或文件已损坏")
 	}
+
+	var bundle storage.BackupBundle
+	if err := json.Unmarshal(plaintext, &bundle); err == nil && bundle.Version != "" {
+		if err := storage.RestoreBackupBundle(s.IdentityPath(), bundle); err != nil {
+			return BackupImportResult{}, errors.New("完整备份校验失败：" + err.Error())
+		}
+		return BackupImportResult{Version: bundle.Version, Scope: BackupScopeComplete, RestoredObjectCount: len(bundle.Objects)}, nil
+	}
+
 	local, err := identity.UnmarshalLocal(plaintext)
 	if err != nil {
-		return errors.New("备份内容不是有效的身份文件")
+		return BackupImportResult{}, errors.New("备份内容不是有效的身份文件")
 	}
 	if _, err := identity.FromLocal(local); err != nil {
-		return errors.New("备份内容校验失败：" + err.Error())
+		return BackupImportResult{}, errors.New("备份内容校验失败：" + err.Error())
 	}
-	return os.WriteFile(s.IdentityPath(), plaintext, 0o600)
+	if err := storage.WriteFileSafely(s.IdentityPath(), plaintext, 0o600); err != nil {
+		return BackupImportResult{}, err
+	}
+	return BackupImportResult{Version: "1", Scope: BackupScopeIdentityOnly}, nil
 }
 
 func (s *Service) AddDevice(label string) (types.KeyRecord, error) {
@@ -604,12 +737,17 @@ func (s *Service) StartPublish(listenAddr string, wait time.Duration, includeAtt
 		return PublishResult{}, err
 	}
 	state := id.SignedState()
+	stored, err := storage.StoreReferencedObjects(resolver, path, state, includeAttestations)
+	if err != nil {
+		resolver.Close()
+		cancel()
+		return PublishResult{}, err
+	}
 	if err := resolver.PublishState(ctx, state); err != nil {
 		resolver.Close()
 		cancel()
 		return PublishResult{}, err
 	}
-	stored := storage.StoreReferencedObjects(resolver, path, state, includeAttestations)
 	addrs := resolver.AddrStrings()
 	expiresAt := time.Now().UTC().Add(wait)
 

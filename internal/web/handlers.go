@@ -30,7 +30,7 @@ func (s *Server) apiCreateIdentity(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", err)
 		return
 	}
-	result, err := s.service.CreateIdentity(req.DisplayName, req.OutPath)
+	result, err := s.service.CreateIdentity(req.DisplayName, req.OutPath, false)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "create_identity_failed", err)
 		return

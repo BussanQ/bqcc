@@ -15,6 +15,13 @@ type PageData struct {
 	Now          time.Time
 }
 
+type BackupPageData struct {
+	PageData
+	RestoreVersion     string
+	RestoreObjectCount string
+	RestoreWarning     string
+}
+
 type APIResponse struct {
 	OK     bool        `json:"ok"`
 	Data   interface{} `json:"data,omitempty"`

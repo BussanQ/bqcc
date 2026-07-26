@@ -30,8 +30,8 @@ This repository is a Go prototype for a decentralized identity system:
 - `internal/auth/`: challenge-response signing and verification
 - `internal/attestation/`: attestation creation, signing, verification
 - `internal/p2p/`: libp2p resolver for state/object exchange
-- `internal/storage/`: shared filesystem helpers (JSON read/write, local identity load/save, loading referenced objects into a resolver), used by the CLI and the service layer
-- `internal/app/`: application service layer shared by user interfaces (incl. `SelfCheck`, `ListNotes`, passphrase `ExportBackup`/`ImportBackup`)
+- `internal/storage/`: safe filesystem writes, local identity load/save, verified referenced-object collection for publish/backup, and the versioned backup bundle
+- `internal/app/`: application service layer shared by user interfaces (incl. safe summaries, cumulative memory manifests, legacy-memory consolidation, `SelfCheck`, `ListNotes`, complete passphrase `ExportBackup`/`ImportBackup`)
 - `internal/web/`: localhost web console — a consumer-facing **simple mode** at the root plus the full protocol **advanced console** under `/advanced`; handlers, templates, static assets, and a server-side `/api/qr` PNG endpoint
 - `internal/cli/`: node/web subcommand implementations behind the unified entrypoint
 - `cmd/decentid/`: the single binary entrypoint (`web` subcommand plus all node subcommands)
@@ -53,7 +53,7 @@ This repository is a Go prototype for a decentralized identity system:
 - Hashing uses SHA-256.
 - Signing uses Ed25519.
 - Encryption for private memory uses X25519 key agreement plus AES-GCM.
-- Encrypted identity backup uses scrypt-derived keys plus AES-256-GCM (`internal/crypto` `EncryptWithPassphrase`/`DecryptWithPassphrase`).
+- Encrypted backup v2 uses scrypt-derived keys plus AES-256-GCM (`internal/crypto` `EncryptWithPassphrase`/`DecryptWithPassphrase`) around a bundle containing the local identity and all currently referenced memory/attestation objects; v1 identity-only backups remain import-compatible.
 - The web simple mode adds one direct dependency, `github.com/skip2/go-qrcode` (pure Go), for the `/api/qr` endpoint.
 - Local identity files contain a keyring (`localKeys`) plus preferred root/device/encryption key IDs.
 - `publish` includes public memory objects and can include attached attestations.
@@ -75,6 +75,8 @@ If you touch key lifecycle:
 If you touch memory semantics:
 - keep content-addressed object behavior
 - keep manifest root deterministic
+- treat the current public/private manifest as an immutable cumulative snapshot; simple lists, publish and backup must follow the current roots rather than scan arbitrary sibling JSON files
+- legacy local objects may only be consolidated when their CID and signature validate against this identity's historical root public keys; consolidation appends events and never rewrites old objects
 - do not expose plaintext payload in private object files
 - private decrypt helpers should return user payload, not force callers to parse canonical envelopes
 
@@ -92,9 +94,16 @@ If you touch auth:
 
 If you touch P2P:
 - keep identity/state verification separate from transport
+- validate the public referenced-object closure before publishing state; missing or tampered referenced objects must fail instead of producing a partial publish
+- private manifests and objects must never enter the publish set
 - prefer minimal, testable APIs
 - do not assume a single long-lived online node
 - stream-based resolve/object fetch paths are currently the reliable contract; do not couple correctness to local pubsub timing
+
+If you touch backup:
+- validate the local identity by replay plus every object CID/reference before restore writes begin
+- write referenced objects before replacing the identity file
+- preserve v1 identity-only import compatibility and clearly report that such backups do not contain content or attestations
 
 ## Development workflow
 

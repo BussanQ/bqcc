@@ -1,8 +1,16 @@
 {{template "simple_shell_start" .}}
+{{if .RestoreVersion}}
+<section class="simple-card">
+  <div class="panel-head"><svg class="icon"><use href="#i-check"/></svg><span class="eyebrow">恢复完成</span></div>
+  <h2>备份已恢复</h2>
+  <p class="muted">备份版本：v{{.RestoreVersion}}；恢复对象：{{.RestoreObjectCount}} 个。</p>
+  {{if .RestoreWarning}}<p class="callout">{{.RestoreWarning}}</p>{{end}}
+</section>
+{{end}}
 <section class="simple-card">
   <div class="panel-head"><svg class="icon"><use href="#i-download"/></svg><span class="eyebrow">备份</span></div>
   <h2>导出加密备份</h2>
-  <p class="muted">设一个口令，下载一个加密备份文件。换设备或重装时，用它和口令就能恢复你的身份。请妥善保管口令——丢了口令就无法恢复。</p>
+  <p class="muted">设一个口令，下载完整加密备份。它包含本地钥匙串、当前公开/私有内容目录和内容对象、以及已附着的他人背书。私有内容保持加密，整个备份还会再受口令保护。</p>
   <form method="POST" action="/api/backup/export">
     <label>备份口令<input type="password" name="passphrase" placeholder="设置一个只有你知道的口令" required></label>
     <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-download"/></svg>下载加密备份</button></div>
@@ -12,7 +20,7 @@
 <section class="simple-card">
   <div class="panel-head"><svg class="icon"><use href="#i-upload"/></svg><span class="eyebrow">恢复</span></div>
   <h2>从备份恢复</h2>
-  <p class="muted">选择此前导出的备份文件并输入当时的口令，即可恢复你的身份。<strong>这会覆盖当前身份。</strong></p>
+  <p class="muted">选择此前导出的备份文件并输入当时的口令，即可恢复钥匙串和备份中包含的对象。<strong>这会覆盖当前身份。</strong>旧版仅身份备份仍可导入，但无法恢复当时未包含的内容。</p>
   <form class="confirm-form" method="POST" action="/api/backup/import" enctype="multipart/form-data" data-confirm="恢复会覆盖当前身份，确定继续？">
     <label>备份文件<input type="file" name="backup" accept=".enc" required></label>
     <label>备份口令<input type="password" name="passphrase" placeholder="导出时设置的口令" required></label>

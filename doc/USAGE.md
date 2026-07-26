@@ -1,540 +1,201 @@
-# decentid 使用说明
+# decentid CLI 使用说明
 
-本文档面向直接使用当前 CLI 原型的开发者，覆盖从创建身份到 memory、device、challenge-response、attestation、P2P publish/resolve 的完整流程。
+`decentid` 是一个去中心化身份协议原型。先记住 3 个概念：**身份=密钥、连续性=签名变更链、登录=签名**。术语说明见 [`概念模型.md`](./概念模型.md)。
 
-如需项目背景和协议说明，先看仓库根目录下的 `README.md`；实现范围和验收基线见 `PLAN.md`。
-概念不清先看 [`概念模型.md`](./概念模型.md)：核心只有 3 个，并附行话→大白话术语对照表。
+## 1. 准备与帮助
 
-## 1. 环境准备
-
-### 依赖
-
-- Go 1.24+
-
-### 安装依赖
-
-在仓库根目录执行：
+需要 Go 1.24+。在仓库根目录可直接运行：
 
 ```bash
-go mod tidy
+go run ./cmd/decentid help
+go run ./cmd/decentid version
 ```
 
-### 建议的本地文件目录
-
-当前仓库已经把身份相关 JSON 放到 `bq/` 目录下，后续命令都建议沿用这个目录：
+也可先构建单文件程序：
 
 ```bash
-mkdir -p bq
+go build -o decentid ./cmd/decentid
 ```
 
-> `bq/` 里的文件通常包含本地私钥或认证材料，不要提交到公开仓库。
+后文的 `decentid` 可替换为 `go run ./cmd/decentid`。
 
-## 2. CLI 命令总览
-
-当前支持的命令：
-
-- `create`
-- `show`
-- `export-state`
-- `keys`
-- `add-memory`
-- `show-memory`
-- `add-device`
-- `revoke-device`
-- `rotate-root`
-- `challenge`
-- `respond`
-- `verify`
-- `issue-attestation`
-- `verify-attestation`
-- `attach-attestation`
-- `publish`
-- `resolve`
-
-## 3. 创建身份
-
-创建一个新身份：
+## 2. 最短安全流程
 
 ```bash
-go run ./cmd/decentid create -name alice -out bq/identity.json
+decentid create -name Alice -out identity.json
+decentid show -identity identity.json
+decentid add-memory -identity identity.json -payload "hello"
+decentid export-state -identity identity.json -out identity-state.json
+decentid web -identity identity.json -addr 127.0.0.1:8080
 ```
 
-成功后会输出类似：
+- `identity.json` 是包含私钥的本地**钥匙串**，绝不外发。
+- `identity-state.json` 是不含私钥的**公开名片**，可交给验证方。
+- `show` 和 `keys` 只输出安全摘要与公开 key，不再打印 `localKeys/privateKey`。
 
-```text
-created did:p2p:...
-```
-
-生成的 `bq/identity.json` 是本地身份文件，里面包含：
-
-- identity document
-- identity events
-- local keyring
-- preferred key IDs
-
-### 重要安全说明
-
-`bq/identity.json` **不能公开**。
-
-原因是它包含 `localKeys`，其中有：
-
-- root 私钥
-- device 私钥
-- encryption 私钥
-
-任何拿到这个文件的人，都可能直接控制该身份。
-
-## 4. 查看身份内容
-
-查看本地身份文件内容：
+## 3. 创建与查看身份
 
 ```bash
-go run ./cmd/decentid show -identity bq/identity.json
+decentid create -name Alice -out identity.json
+decentid show -identity identity.json
+decentid keys -identity identity.json
 ```
 
-这会直接打印完整的本地身份 JSON。
-
-### 注意
-
-`show` 输出的是 **本地身份文件**，不是脱敏后的公开视图，所以同样不要随意贴到公网、Issue、聊天记录或截图里。
-
-如果你只是想看 key 状态，优先用下面的 `keys`。
-
-## 5. 查看 key 状态
+若目标文件已存在，`create` 默认失败，避免覆盖钥匙串。只有明确要替换时才使用：
 
 ```bash
-go run ./cmd/decentid keys -identity bq/identity.json
+decentid create -name Bob -out identity.json -force
 ```
 
-会输出：
+`-force` 会创建新的初始主控密钥和新的身份码。执行前应先导出完整备份。
 
-- `rootKeyId`
-- `preferredRootKeyId`
-- `preferredDeviceKeyId`
-- `preferredEncryptKeyId`
-- `activeKeys`
-- `localKeys`
-
-这个命令常用于：
-
-- 找当前 active root key
-- 找当前默认 device key
-- 找要撤销的 device key ID
-- 确认 root rotate 后当前生效的 root key
-
-## 6. 添加 memory
-
-### 6.1 添加 public memory
+导出给验证方的公开名片：
 
 ```bash
-go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "hello public"
+decentid export-state -identity identity.json -out identity-state.json
 ```
 
-执行后会输出两个 CID：
+## 4. 内容
 
-```text
-memory <memoryCID>
-manifest <manifestCID>
-```
-
-同时会在 `bq/` 目录下生成两个文件：
-
-- `bq/<memoryCID>.json`
-- `bq/<manifestCID>.json`
-
-并更新身份中的 public memory root。
-
-### 6.2 添加 private memory
+添加公开内容：
 
 ```bash
-go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "secret memory" -visibility private
+decentid add-memory -identity identity.json -type note -payload "hello public"
 ```
 
-这条命令会：
-
-- 用当前 active encryption key 加密 payload
-- 生成 private memory object
-- 生成 private manifest
-- 更新身份中的 `privateMemoryRoot`
-
-### 6.3 查看 memory 文件
-
-如果是 public memory，可以直接打开文件看 JSON；如果是 private memory，文件里不会保存明文 `payload`。
-
-当前 private object 典型字段是：
-
-- `cid`
-- `type`
-- `createdAt`
-- `contentHash`
-- `ciphertext`
-- `encryption`
-- `visibility`
-- `signature`
-
-### 6.4 解密查看 private memory
+添加只有自己能看的加密内容：
 
 ```bash
-go run ./cmd/decentid show-memory -identity bq/identity.json -memory bq/<memoryCID>.json
+decentid add-memory -identity identity.json -type note -payload "secret" -visibility private
 ```
 
-行为说明：
+合法 visibility 只有 `public` 和 `private`。每次新增内容都会保留当前同类目录中的已有 items，并生成新的累积 manifest；输出会显示当前 item 数量。
 
-- 如果目标是 public memory：直接打印对象 JSON
-- 如果目标是 private memory：使用本地 encryption private key 解密，并直接输出明文 payload
-
-## 7. 增加设备
-
-增加一个新的 device key：
+查看对象：
 
 ```bash
-go run ./cmd/decentid add-device -identity bq/identity.json -label laptop
+decentid show-memory -identity identity.json -memory <memoryCID>.json
 ```
 
-返回结果里会包含新 device key 的记录和 key ID。
+- public：输出对象 JSON。
+- private：使用本地加密私钥解密并输出用户 payload。
 
-建议随后执行：
+旧版本地单项内容的检测与整理目前在默认 Web 操作台的“内容”页提供。整理只追加新变更记录，不改旧对象或身份码。
+
+## 5. 设备与主控密钥
 
 ```bash
-go run ./cmd/decentid keys -identity bq/identity.json
+decentid add-device -identity identity.json -label backup-signer
+decentid keys -identity identity.json
+decentid revoke-device -identity identity.json -key-id <deviceKeyId> -reason "lost"
+decentid rotate-root -identity identity.json -label rotated-root
 ```
 
-确认：
+注意：`add-device` 当前是在同一个本地钥匙串中生成额外设备密钥，不会自动把密钥发送到另一台手机或电脑。root rotation 只改变控制密钥，身份码保持不变。
 
-- 新设备是否已经进入 `activeKeys`
-- 本地是否保存了对应私钥
+## 6. challenge-response 登录验证
 
-## 8. 撤销设备
-
-先查出要撤销的设备 key ID：
+验证方生成题目：
 
 ```bash
-go run ./cmd/decentid keys -identity bq/identity.json
+decentid challenge -id "did:p2p:..." -ttl 5m -out challenge.json
 ```
 
-然后执行：
+身份持有者签名作答：
 
 ```bash
-go run ./cmd/decentid revoke-device -identity bq/identity.json -key-id <deviceKeyId> -reason "lost"
+decentid respond -identity identity.json -challenge challenge.json -out response.json
 ```
 
-成功后会输出：
-
-```text
-revoked <deviceKeyId>
-```
-
-### 撤销后的影响
-
-被撤销的 device key：
-
-- 仍然会留在历史事件里
-- 不会破坏历史 replay 验证
-- **不能再用于 challenge-response 签名**
-
-## 9. challenge-response 认证流程
-
-这套认证是无中心账号、无 session 数据库的签名式验证。
-
-### 9.1 生成 challenge
+可显式指定 active device key：
 
 ```bash
-go run ./cmd/decentid challenge -id "did:p2p:..." -out bq/challenge.json
+decentid respond -identity identity.json -challenge challenge.json -signer-key-id <deviceKeyId> -out response.json
 ```
 
-也可以指定有效期：
+验证方使用公开名片验签：
 
 ```bash
-go run ./cmd/decentid challenge -id "did:p2p:..." -ttl 10m -out bq/challenge.json
+decentid verify -state identity-state.json -response response.json
 ```
 
-### 9.2 用身份响应 challenge
+过期题目、被撤销设备或无法通过 replay 验证的公开状态都会失败。`verify -identity` 只为旧本机流程兼容，新的验证方流程应始终使用 `-state`。
 
-默认使用当前 preferred device key：
+## 7. 他人背书
+
+签发 standalone attestation：
 
 ```bash
-go run ./cmd/decentid respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
+decentid issue-attestation -identity issuer.json -subject "did:p2p:..." -claim-type known -claim-value Alice -out attestation.json
 ```
 
-显式指定设备 key：
+issuer 先导出公开名片，验证方不需要 issuer 的私有钥匙串：
 
 ```bash
-go run ./cmd/decentid respond -identity bq/identity.json -challenge bq/challenge.json -signer-key-id <deviceKeyId> -out bq/response.json
+decentid export-state -identity issuer.json -out issuer-state.json
+decentid verify-attestation -issuer-state issuer-state.json -attestation attestation.json
 ```
 
-### 9.3 导出公开身份状态
+旧的 `-issuer issuer.json` 仍临时兼容，但会输出弃用警告。
+
+被背书者按 CID 引用附着：
 
 ```bash
-go run ./cmd/decentid export-state -identity bq/identity.json -out bq/state.json
+decentid attach-attestation -identity identity.json -attestation attestation.json
 ```
 
-`bq/identity.json` 是本地私有文件，不应该发给验证方。验证方只需要公开的 `bq/state.json`。
-
-### 9.4 验证 response
-
-```bash
-go run ./cmd/decentid verify -state bq/state.json -response bq/response.json
-```
-
-输出为：
-
-- `true`：验证通过
-- `false`：验证失败
-
-### 9.5 常见失败原因
-
-- challenge 已过期
-- `signer-key-id` 对应的 key 已被撤销
-- 用了不是 device role 的 key
-- 响应文件与 challenge 不匹配
-- response 的 identity 与 `state.document.id` 不匹配
-- 公开 signed state 被手工改坏，事件链验证失败
-
-## 10. root rotate
-
-root rotate 会更换控制身份的 active root key，但 **不会改变 DID**。
-
-执行：
-
-```bash
-go run ./cmd/decentid rotate-root -identity bq/identity.json -label rotated-root
-```
-
-然后查看：
-
-```bash
-go run ./cmd/decentid keys -identity bq/identity.json
-go run ./cmd/decentid show -identity bq/identity.json
-```
-
-你应当关注：
-
-- `Document.ID` 是否保持不变
-- `Document.RootKeyID` 是否已切到新 root
-- 老 root 是否还保留在历史 key 集里
-
-## 11. attestation 流程
-
-attestation 是独立对象，不会直接塞进 identity document 正文里。身份上只会附着 attestation 的 CID 引用。
-
-下面用两个身份举例：
-
-- `bq/issuer.json`
-- `bq/alice.json`
-
-### 11.1 创建 issuer 和 subject 身份
-
-```bash
-go run ./cmd/decentid create -name issuer -out bq/issuer.json
-go run ./cmd/decentid create -name alice -out bq/alice.json
-```
-
-先用 `show` 查看 `bq/alice.json` 里的 DID，记作 `<subjectDID>`。
-
-### 11.2 签发 attestation
-
-```bash
-go run ./cmd/decentid issue-attestation \
-  -identity bq/issuer.json \
-  -subject "<subjectDID>" \
-  -claim-type known \
-  -claim-value alice \
-  -out bq/attestation.json
-```
-
-可选参数：
-
-- `-evidence-ref <ref>`
-- `-valid-for 48h`
-
-### 11.3 验证 attestation
-
-```bash
-go run ./cmd/decentid verify-attestation -issuer bq/issuer.json -attestation bq/attestation.json
-```
-
-会输出校验结果。
-
-### 11.4 把 attestation 附着到 subject 身份
-
-```bash
-go run ./cmd/decentid attach-attestation -identity bq/alice.json -attestation bq/attestation.json
-```
-
-这一步会做两件事：
-
-- 把 attestation 文件复制为 `bq/<attestationCID>.json`
-- 往 identity event chain 里追加 attestation ref
-
-附着后可以再执行：
-
-```bash
-go run ./cmd/decentid show -identity bq/alice.json
-```
-
-检查 `attestationRefs`。
-
-## 12. P2P publish / resolve
-
-### 12.1 发布身份状态
-
-在终端 A 执行：
-
-```bash
-go run ./cmd/decentid publish -identity bq/identity.json -wait 10m
-```
-
-它会打印当前节点监听地址，例如：
-
-```text
-/ip4/127.0.0.1/tcp/12345/p2p/...
-```
-
-默认 publish 行为：
-
-- 发布 signed identity state
-- 发布 public memory manifest
-- 发布 public memory objects
-- 发布已附着 attestation objects
-- **不会发布 private memory objects**
-
-如果不想发布 attestation 对象：
-
-```bash
-go run ./cmd/decentid publish -identity bq/identity.json -wait 10m -include-attestations=false
-```
-
-### 12.2 从远端解析身份状态
-
-在终端 B 执行：
-
-```bash
-go run ./cmd/decentid resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
-```
-
-这会输出远端返回的 signed identity state。
-
-### 12.3 当前 resolve 的边界
-
-当前 `resolve` 命令：
-
-- 会取回远端 identity state
-- 不会自动把相关 memory / attestation 文件全部下载到本地目录
-- 更偏向协议验证与最小链路演示
-
-## 13. 推荐的完整演示顺序
-
-如果你想快速跑一遍当前原型，建议按这个顺序：
-
-### 13.1 创建身份
-
-```bash
-go run ./cmd/decentid create -name alice -out bq/identity.json
-```
-
-### 13.2 添加一条 public memory
-
-```bash
-go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "hello public"
-```
-
-### 13.3 添加一条 private memory
-
-```bash
-go run ./cmd/decentid add-memory -identity bq/identity.json -type note -payload "secret note" -visibility private
-```
-
-### 13.4 增加一个设备
-
-```bash
-go run ./cmd/decentid add-device -identity bq/identity.json -label phone
-```
-
-### 13.5 跑 challenge-response
-
-```bash
-go run ./cmd/decentid export-state -identity bq/identity.json -out bq/state.json
-go run ./cmd/decentid challenge -id "did:p2p:..." -out bq/challenge.json
-go run ./cmd/decentid respond -identity bq/identity.json -challenge bq/challenge.json -out bq/response.json
-go run ./cmd/decentid verify -state bq/state.json -response bq/response.json
-```
-
-### 13.6 rotate root
-
-```bash
-go run ./cmd/decentid rotate-root -identity bq/identity.json -label rotated-root
-```
-
-### 13.7 发布并远端解析
+## 8. P2P 发布与取回
 
 终端 A：
 
 ```bash
-go run ./cmd/decentid publish -identity bq/identity.json -wait 10m
+decentid publish -identity identity.json -wait 10m
 ```
+
+默认发布：
+
+- 已通过 replay 验证的 signed identity state；
+- 当前 public memory manifest 和全部成员对象；
+- 已附着的 standalone attestation（可用 `-include-attestations=false` 关闭）。
+
+发布前会校验对象 CID、签名和引用完整性；private manifest/object 永远不进入发布集合。
 
 终端 B：
 
 ```bash
-go run ./cmd/decentid resolve -peer "<peerMultiaddr>" -id "did:p2p:..."
+decentid resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 ```
 
-## 14. 文件说明
+CLI 会在输出前对远端 `SignedIdentityState` 做 replay 验证。当前 `resolve` 仍只输出身份状态，不自动持久化关联对象。
 
-### `bq/identity.json`
+## 9. 完整加密备份
 
-本地身份文件，包含私钥，不能公开。
+备份/恢复目前由本机 Web 操作台提供：
 
-### `bq/state.json`
+```bash
+decentid web -identity identity.json -addr 127.0.0.1:8080
+```
 
-通过 `export-state` 导出的公开 signed identity state，包含 document 和 events，不包含 `localKeys` 或私钥。验证方可以使用它验证 challenge response。
+打开“备份”页：
 
-### `bq/challenge.json`
+- v2 备份包含钥匙串、当前公开/私有内容目录和对象、已附着他人背书；
+- bundle 使用 scrypt + AES-256-GCM 加密；
+- 导入前校验 identity replay、对象 CID 和引用闭包；
+- v1 旧版仅身份备份仍可导入，但会明确警告没有恢复内容；
+- 若检测到旧版本地内容未纳入当前目录，会先要求在“内容”页整理，避免静默遗漏。
 
-challenge 请求文件。
+## 10. 命令速查
 
-### `bq/response.json`
+```text
+web | version | create | show | export-state | keys
+add-memory | show-memory
+add-device | revoke-device | rotate-root
+challenge | respond | verify
+issue-attestation | verify-attestation | attach-attestation
+publish | resolve
+```
 
-challenge-response 的签名响应文件。
-
-### `bq/<memoryCID>.json`
-
-memory object 文件。
-
-- public memory：直接包含明文 payload
-- private memory：包含 ciphertext 和加密元数据，不包含明文 payload
-
-### `bq/<manifestCID>.json`
-
-memory manifest 文件，记录当前 memory root 下的 item CID 列表。
-
-### `bq/<attestationCID>.json`
-
-attestation 对象文件。
-
-## 15. 安全建议
-
-1. 不要公开 `identity.json` 或 `show` 输出。
-2. 验证方使用 `export-state` 导出的公开 state，不要索要本地身份文件。
-3. 不要把 `bq/*.json` 提交到公开仓库。
-4. private memory 文件虽然不含明文，但本地身份文件里有解密私钥，二者应一起保护。
-5. 不要手工修改 identity JSON；事件签名和 canonical 结构很容易因此失效。
-6. 做外部演示时，优先新建一个演示身份，不要直接拿长期使用的本地身份文件演示。
-
-## 16. 当前已知限制
-
-当前实现是原型，不是生产系统。已知限制包括：
-
-- 本地私钥仍保存在 JSON 文件里
-- private memory 目前只支持 owner-self decrypt
-- `resolve` 只直接输出 identity state，不自动追取关联对象
-- object store 目前不是持久化存储
-- 还没有更高层 trust / reputation policy
-- 还没有生产级密钥托管与恢复机制
-
-## 17. 开发验证命令
-
-如果你修改了代码，建议在仓库根目录执行：
+## 11. 开发验证
 
 ```bash
 gofmt -w ./cmd ./internal ./pkg

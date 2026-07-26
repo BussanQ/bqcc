@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/example/decentid/internal/app"
 	"github.com/example/decentid/internal/attestation"
 	"github.com/example/decentid/internal/auth"
 	"github.com/example/decentid/internal/identity"
@@ -69,11 +70,21 @@ func RunNode(args []string) {
 	}
 }
 
-// Usage prints the full command list for the unified decentid binary.
+// Usage prints the safe primary workflow before the advanced command list.
 func Usage() {
-	fmt.Println("decentid commands:")
-	fmt.Println("  web                  start the localhost web console")
-	fmt.Println("  create | show | export-state | keys")
+	fmt.Println("DecentID：身份是一把密钥，历史是一条签名链，登录是一次签名。")
+	fmt.Println()
+	fmt.Println("安全上手：")
+	fmt.Println("  decentid create -name Alice -out identity.json")
+	fmt.Println("  decentid show -identity identity.json")
+	fmt.Println("  decentid add-memory -identity identity.json -payload 'hello'")
+	fmt.Println("  decentid export-state -identity identity.json -out identity-state.json")
+	fmt.Println("  decentid web -identity identity.json")
+	fmt.Println()
+	fmt.Println("identity.json 是包含私钥的本地钥匙串，绝不外发；对外只分享公开名片 identity-state.json。")
+	fmt.Println()
+	fmt.Println("命令：")
+	fmt.Println("  web | version | create | show | export-state | keys")
 	fmt.Println("  add-memory | show-memory")
 	fmt.Println("  add-device | revoke-device | rotate-root")
 	fmt.Println("  issue-attestation | verify-attestation | attach-attestation")
@@ -85,14 +96,13 @@ func runCreate(args []string) {
 	fs := flag.NewFlagSet("create", flag.ExitOnError)
 	name := fs.String("name", "", "display name")
 	out := fs.String("out", "identity.json", "output file")
+	force := fs.Bool("force", false, "replace an existing identity file (dangerous)")
 	fs.Parse(args)
 
-	id, err := identity.New(*name)
+	result, err := app.NewService(*out).CreateIdentity(*name, *out, *force)
 	must(err)
-	data, err := identity.MarshalLocal(id.ExportLocal())
-	must(err)
-	must(os.WriteFile(*out, data, 0o600))
-	fmt.Printf("created %s\n", id.Document.ID)
+	fmt.Printf("created %s\n", result.Summary.DID)
+	fmt.Printf("local keyring: %s (do not share)\n", result.Summary.IdentityPath)
 }
 
 func runAddMemory(args []string) {
@@ -100,43 +110,12 @@ func runAddMemory(args []string) {
 	file := fs.String("identity", "identity.json", "identity file")
 	kind := fs.String("type", "note", "memory type")
 	payload := fs.String("payload", "", "memory payload")
-	visibility := fs.String("visibility", string(types.VisibilityPublic), "visibility")
+	visibility := fs.String("visibility", string(types.VisibilityPublic), "visibility: public or private")
 	fs.Parse(args)
 
-	id := loadIdentity(*file)
-	rootPriv, err := id.PreferredRootPrivateKey()
+	result, err := app.NewService(*file).AddMemory(*kind, *payload, types.Visibility(*visibility))
 	must(err)
-
-	var obj types.MemoryObject
-	if types.Visibility(*visibility) == types.VisibilityPrivate {
-		encryptionKeyID := id.EncryptionKeyID()
-		if encryptionKeyID == "" {
-			must(fmt.Errorf("no active encryption key"))
-		}
-		publicKey, err := identity.ResolveEncryptionPublicKey(id.Document, encryptionKeyID)
-		must(err)
-		obj, err = memory.NewPrivateObject(*kind, *payload, encryptionKeyID, publicKey, nil, nil)
-		must(err)
-	} else {
-		obj, err = memory.NewObject(*kind, *payload, types.Visibility(*visibility), nil, nil)
-		must(err)
-	}
-	must(memory.SignObject(&obj, rootPriv))
-	manifest, err := memory.NewManifest(types.Visibility(*visibility), []types.MemoryObject{obj})
-	must(err)
-	must(memory.SignManifest(&manifest, rootPriv))
-	if types.Visibility(*visibility) == types.VisibilityPrivate {
-		must(id.AddPrivateMemoryRoot(manifest.CID))
-	} else {
-		must(id.AddPublicMemoryRoot(manifest.CID))
-	}
-	saveIdentity(*file, id)
-
-	memoryFile := filepath.Join(filepath.Dir(*file), obj.CID+".json")
-	manifestFile := filepath.Join(filepath.Dir(*file), manifest.CID+".json")
-	writeJSON(memoryFile, obj)
-	writeJSON(manifestFile, manifest)
-	fmt.Printf("memory %s\nmanifest %s\n", obj.CID, manifest.CID)
+	fmt.Printf("memory %s\nmanifest %s (%d current items)\n", result.ObjectCID, result.ManifestCID, len(result.Manifest.Items))
 }
 
 func runShowMemory(args []string) {
@@ -164,8 +143,9 @@ func runShow(args []string) {
 	file := fs.String("identity", "identity.json", "identity file")
 	fs.Parse(args)
 
-	id := loadIdentity(*file)
-	printJSON(id.ExportLocal())
+	summary, err := app.NewService(*file).Summary()
+	must(err)
+	printJSON(summary)
 }
 
 func runExportState(args []string) {
@@ -174,9 +154,9 @@ func runExportState(args []string) {
 	out := fs.String("out", "identity-state.json", "output public state file")
 	fs.Parse(args)
 
-	id := loadIdentity(*file)
-	writeJSON(*out, id.SignedState())
-	fmt.Printf("state written to %s\n", *out)
+	result, err := app.NewService(*file).ExportState(*out)
+	must(err)
+	fmt.Printf("public identity card written to %s\n", result.OutFile)
 }
 
 func runKeys(args []string) {
@@ -184,14 +164,15 @@ func runKeys(args []string) {
 	file := fs.String("identity", "identity.json", "identity file")
 	fs.Parse(args)
 
-	id := loadIdentity(*file)
+	summary, err := app.NewService(*file).Summary()
+	must(err)
 	printJSON(map[string]interface{}{
-		"rootKeyId":             id.Document.RootKeyID,
-		"preferredRootKeyId":    id.PreferredRootKeyID,
-		"preferredDeviceKeyId":  id.PreferredDeviceKeyID,
-		"preferredEncryptKeyId": id.PreferredEncryptionKeyID,
-		"activeKeys":            id.Document.ActiveKeys,
-		"localKeys":             id.ExportLocal().LocalKeys,
+		"rootKeyId":                summary.RootKeyID,
+		"preferredRootKeyId":       summary.PreferredRootKeyID,
+		"preferredDeviceKeyId":     summary.PreferredDeviceKeyID,
+		"preferredEncryptionKeyId": summary.PreferredEncryptionKeyID,
+		"keys":                     summary.Keys,
+		"warning":                  "private key bytes are hidden; the identity file is the local keyring and must not be shared",
 	})
 }
 
@@ -258,16 +239,21 @@ func runIssueAttestation(args []string) {
 
 func runVerifyAttestation(args []string) {
 	fs := flag.NewFlagSet("verify-attestation", flag.ExitOnError)
-	issuerFile := fs.String("issuer", "identity.json", "issuer identity file")
+	issuerStateFile := fs.String("issuer-state", "", "issuer public identity state file")
+	issuerFile := fs.String("issuer", "identity.json", "deprecated issuer local identity file")
 	attFile := fs.String("attestation", "attestation.json", "attestation file")
 	fs.Parse(args)
 
-	issuer := loadIdentity(*issuerFile)
 	var att types.Attestation
 	readJSON(*attFile, &att)
-	pub, err := identity.ResolveKey(issuer.Document, att.IssuerKeyID)
-	must(err)
-	fmt.Println(attestation.Verify(att, pub))
+	var state types.SignedIdentityState
+	if *issuerStateFile != "" {
+		state = loadSignedState(*issuerStateFile)
+	} else {
+		fmt.Fprintln(os.Stderr, "warning: -issuer is deprecated; export and pass the issuer's public state with -issuer-state")
+		state = loadIdentity(*issuerFile).SignedState()
+	}
+	printJSON(app.VerifyAttestationWithState(state, att))
 }
 
 func runAttachAttestation(args []string) {
@@ -356,8 +342,9 @@ func runPublish(args []string) {
 	defer resolver.Close()
 
 	state := id.SignedState()
+	_, err = storage.StoreReferencedObjects(resolver, *file, state, *includeAttestations)
+	must(err)
 	must(resolver.PublishState(ctx, state))
-	storage.StoreReferencedObjects(resolver, *file, state, *includeAttestations)
 	fmt.Println(strings.Join(resolver.AddrStrings(), "\n"))
 	<-ctx.Done()
 }
@@ -379,6 +366,7 @@ func runResolve(args []string) {
 	must(err)
 	state, err := resolver.ResolveRemote(ctx, info.ID, *identityID)
 	must(err)
+	must(identity.VerifyState(state))
 	printJSON(state)
 }
 

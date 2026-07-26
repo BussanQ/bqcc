@@ -1,15 +1,15 @@
 {{template "simple_shell_start" .}}
 <section class="simple-card">
-  <div class="panel-head"><svg class="icon"><use href="#i-plus"/></svg><span class="eyebrow">添加设备</span></div>
-  <p class="muted">给你的另一台设备（手机、电脑）授权登录。</p>
-  <form class="action-form" data-endpoint="/api/devices/add" data-toast="设备已添加" data-reload="/devices">
-    <label>设备名称<input name="label" placeholder="例如：我的手机"></label>
-    <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-plus"/></svg>添加设备</button></div>
+  <div class="panel-head"><svg class="icon"><use href="#i-plus"/></svg><span class="eyebrow">本地设备密钥</span></div>
+  <p class="muted">在当前钥匙串中新增一把登录签名密钥。它只保存在这个身份文件里，不会自动发送到另一台手机或电脑，也不是跨设备配对。</p>
+  <form class="action-form" data-endpoint="/api/devices/add" data-toast="本地设备密钥已新增" data-reload="/devices">
+    <label>密钥标签<input name="label" placeholder="例如：备用签名密钥"></label>
+    <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-plus"/></svg>新增本地设备密钥</button></div>
   </form>
 </section>
 
 <section class="simple-card">
-  <div class="panel-head"><svg class="icon"><use href="#i-devices"/></svg><span class="eyebrow">已授权设备</span></div>
+  <div class="panel-head"><svg class="icon"><use href="#i-devices"/></svg><span class="eyebrow">设备密钥</span></div>
   <div class="device-list">
     {{$hasDevice := false}}
     {{range .Summary.Keys}}
@@ -31,7 +31,7 @@
         </div>
       {{end}}
     {{end}}
-    {{if not $hasDevice}}<p class="muted">还没有设备。创建身份后会自动有一台。</p>{{end}}
+    {{if not $hasDevice}}<p class="muted">还没有可用的设备密钥。创建身份时通常会自动生成一把。</p>{{end}}
   </div>
 </section>
 {{template "simple_shell_end" .}}

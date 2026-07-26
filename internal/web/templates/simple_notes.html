@@ -14,8 +14,16 @@
   </form>
 </section>
 
+<section class="simple-card" id="legacy-memory-card" hidden>
+  <div class="panel-head"><svg class="icon"><use href="#i-memory"/></svg><span class="eyebrow">旧内容整理</span></div>
+  <p class="muted" id="legacy-memory-message"></p>
+  <form class="action-form" data-endpoint="/api/memory/consolidate" data-confirm="整理会追加签名的变更记录并生成新的内容目录；不会修改身份码、旧内容或历史记录。继续？" data-toast="旧内容已整理" data-reload="/notes">
+    <div class="form-actions"><button class="ghost-button block" type="submit"><svg class="icon"><use href="#i-check"/></svg>纳入当前内容目录</button></div>
+  </form>
+</section>
+
 <section class="simple-card">
-  <div class="panel-head"><svg class="icon"><use href="#i-memory"/></svg><span class="eyebrow">我的内容</span></div>
+  <div class="panel-head"><svg class="icon"><use href="#i-memory"/></svg><span class="eyebrow">当前内容</span></div>
   <div id="notes-list" data-notes-list><p class="muted">加载中…</p></div>
 </section>
 {{template "simple_shell_end" .}}

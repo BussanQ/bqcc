@@ -1,6 +1,5 @@
-// Package storage holds the small filesystem helpers shared by the CLI and the
-// application service layer: JSON read/write, local identity load/save, and
-// loading a published identity's referenced objects into a resolver.
+// Package storage provides safe local persistence, referenced-object
+// verification, resolver loading, and versioned backup bundles.
 package storage
 
 import (
@@ -28,7 +27,65 @@ func WriteJSON(path string, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return WriteFileSafely(path, data, 0o600)
+}
+
+// WriteFileSafely writes through a temporary file. When replacing an existing
+// file, it keeps a rollback copy until the new file is in place; this also works
+// on Windows where rename does not replace an existing destination.
+func WriteFileSafely(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	temp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(perm); err != nil {
+		temp.Close()
+		return err
+	}
+	if _, err := temp.Write(data); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return os.Rename(tempPath, path)
+	} else if err != nil {
+		return err
+	}
+
+	backup, err := os.CreateTemp(dir, "."+filepath.Base(path)+".bak-*")
+	if err != nil {
+		return err
+	}
+	backupPath := backup.Name()
+	if err := backup.Close(); err != nil {
+		return err
+	}
+	if err := os.Remove(backupPath); err != nil {
+		return err
+	}
+	if err := os.Rename(path, backupPath); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		_ = os.Rename(backupPath, path)
+		return err
+	}
+	_ = os.Remove(backupPath)
+	return nil
 }
 
 // LoadIdentity reads a local identity file and reconstructs the verified identity.
@@ -50,40 +107,23 @@ func SaveIdentity(path string, id *identity.Identity) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o600)
+	return WriteFileSafely(path, data, 0o600)
 }
 
-// StoreReferencedObjects loads a published identity's public memory manifest,
-// its objects and (optionally) attached attestations from the directory next to
-// identityFile into the resolver's object store, returning the stored CIDs.
-func StoreReferencedObjects(resolver *p2p.Resolver, identityFile string, state types.SignedIdentityState, includeAttestations bool) []string {
-	baseDir := filepath.Dir(identityFile)
-	stored := []string{}
-	if state.Document.PublicMemoryRoot != "" {
-		manifestFile := filepath.Join(baseDir, state.Document.PublicMemoryRoot+".json")
-		if data, err := os.ReadFile(manifestFile); err == nil {
-			resolver.StoreObject(state.Document.PublicMemoryRoot, data)
-			stored = append(stored, state.Document.PublicMemoryRoot)
-			var manifest types.MemoryManifest
-			if err := json.Unmarshal(data, &manifest); err == nil {
-				for _, cid := range manifest.Items {
-					memoryFile := filepath.Join(baseDir, cid+".json")
-					if payload, err := os.ReadFile(memoryFile); err == nil {
-						resolver.StoreObject(cid, payload)
-						stored = append(stored, cid)
-					}
-				}
-			}
-		}
+// StoreReferencedObjects validates and loads a published identity's public
+// memory objects and optional standalone attestations into the resolver.
+func StoreReferencedObjects(resolver *p2p.Resolver, identityFile string, state types.SignedIdentityState, includeAttestations bool) ([]string, error) {
+	objects, err := CollectReferencedObjects(identityFile, state, CollectOptions{
+		IncludePublic:       true,
+		IncludeAttestations: includeAttestations,
+	})
+	if err != nil {
+		return nil, err
 	}
-	if includeAttestations {
-		for _, cid := range state.Document.AttestationRefs {
-			attFile := filepath.Join(baseDir, cid+".json")
-			if data, err := os.ReadFile(attFile); err == nil {
-				resolver.StoreObject(cid, data)
-				stored = append(stored, cid)
-			}
-		}
+	stored := make([]string, 0, len(objects))
+	for _, object := range objects {
+		resolver.StoreObject(object.CID, object.Data)
+		stored = append(stored, object.CID)
 	}
-	return stored
+	return stored, nil
 }

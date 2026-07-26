@@ -72,6 +72,8 @@ func New(displayName string) (*Identity, error) {
 	if err != nil {
 		return nil, err
 	}
+	doc.CreatedAt = event.Timestamp
+	doc.UpdatedAt = event.Timestamp
 	doc.LatestEventID = event.ID
 	return &Identity{
 		Document:                 doc,
@@ -464,7 +466,7 @@ func documentsEqual(a, b types.IdentityDocument) bool {
 		return false
 	}
 	for idx := range a.ActiveKeys {
-		if a.ActiveKeys[idx] != b.ActiveKeys[idx] {
+		if !keyRecordsEqual(a.ActiveKeys[idx], b.ActiveKeys[idx]) {
 			return false
 		}
 	}
@@ -474,6 +476,16 @@ func documentsEqual(a, b types.IdentityDocument) bool {
 		}
 	}
 	return true
+}
+
+func keyRecordsEqual(a, b types.KeyRecord) bool {
+	return a.ID == b.ID &&
+		a.Type == b.Type &&
+		a.Role == b.Role &&
+		a.PublicKey == b.PublicKey &&
+		a.AddedAt.Equal(b.AddedAt) &&
+		a.RevokedAt.Equal(b.RevokedAt) &&
+		a.RevokedReason == b.RevokedReason
 }
 
 func mapsEqual(a, b map[string]string) bool {

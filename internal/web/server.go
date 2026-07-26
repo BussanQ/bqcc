@@ -52,10 +52,10 @@ func (s *Server) Handler() http.Handler {
 
 	// Simple mode (default, consumer-facing) at the root.
 	mux.HandleFunc("/", s.page("/", "simple_home.html", "home", "我的身份"))
-	mux.HandleFunc("/prove", s.page("/prove", "simple_prove.html", "prove", "证明我是我"))
+	mux.HandleFunc("/prove", s.page("/prove", "simple_prove.html", "prove", "本机签名自检"))
 	mux.HandleFunc("/notes", s.page("/notes", "simple_notes.html", "notes", "我的内容"))
 	mux.HandleFunc("/devices", s.page("/devices", "simple_devices.html", "devices", "我的设备"))
-	mux.HandleFunc("/backup", s.page("/backup", "simple_backup.html", "backup", "备份与恢复"))
+	mux.HandleFunc("/backup", s.backupPage())
 
 	// Advanced mode (protocol console) under /advanced.
 	mux.HandleFunc("/advanced", s.page("/advanced", "dashboard.html", "dashboard", "控制台"))
@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/summary", s.apiSummary)
 	mux.HandleFunc("/api/selfcheck", s.apiSelfCheck)
 	mux.HandleFunc("/api/notes", s.apiNotes)
+	mux.HandleFunc("/api/memory/consolidate", s.apiConsolidateMemory)
 	mux.HandleFunc("/api/qr", s.apiQR)
 	mux.HandleFunc("/api/backup/export", s.apiBackupExport)
 	mux.HandleFunc("/api/backup/import", s.apiBackupImport)
@@ -110,15 +111,42 @@ func (s *Server) page(path, templateName, active, title string) http.HandlerFunc
 			http.NotFound(w, r)
 			return
 		}
-		summary, err := s.service.Summary()
-		if err != nil {
-			summary = app.LocalSummary{HasIdentity: false, IdentityPath: s.service.IdentityPath(), Warning: err.Error()}
+		s.renderPage(w, templateName, s.pageData(active, title))
+	}
+}
+
+func (s *Server) backupPage() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			s.methodNotAllowed(w)
+			return
 		}
-		data := PageData{Title: title, Active: active, Summary: summary, IdentityPath: s.service.IdentityPath(), Now: time.Now().UTC()}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		if err := s.templates.ExecuteTemplate(w, templateName, data); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if r.URL.Path != "/backup" {
+			http.NotFound(w, r)
+			return
 		}
+		data := BackupPageData{
+			PageData:           s.pageData("backup", "备份与恢复"),
+			RestoreVersion:     r.URL.Query().Get("restored"),
+			RestoreObjectCount: r.URL.Query().Get("objects"),
+			RestoreWarning:     r.URL.Query().Get("warning"),
+		}
+		s.renderPage(w, "simple_backup.html", data)
+	}
+}
+
+func (s *Server) pageData(active, title string) PageData {
+	summary, err := s.service.Summary()
+	if err != nil {
+		summary = app.LocalSummary{HasIdentity: false, IdentityPath: s.service.IdentityPath(), Warning: err.Error()}
+	}
+	return PageData{Title: title, Active: active, Summary: summary, IdentityPath: s.service.IdentityPath(), Now: time.Now().UTC()}
+}
+
+func (s *Server) renderPage(w http.ResponseWriter, templateName string, data interface{}) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := s.templates.ExecuteTemplate(w, templateName, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 

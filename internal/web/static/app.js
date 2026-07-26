@@ -365,6 +365,14 @@ async function loadNotes() {
     const res = await fetch('/api/notes');
     const json = await res.json();
     const notes = (json.ok && json.data && json.data.notes) || [];
+    const status = (json.ok && json.data && json.data.status) || {};
+    const legacyCount = (status.legacyPublic || 0) + (status.legacyPrivate || 0);
+    const legacyCard = document.getElementById('legacy-memory-card');
+    const legacyMessage = document.getElementById('legacy-memory-message');
+    if (legacyCard && legacyMessage && legacyCount > 0) {
+      legacyMessage.textContent = `发现 ${legacyCount} 条旧版本地内容尚未纳入当前内容目录。整理后，它们会进入当前列表、完整备份和公开发布范围；原内容不会被改写。`;
+      legacyCard.hidden = false;
+    }
     if (!notes.length) {
       host.innerHTML = '<p class="muted">还没有内容，写第一条吧。</p>';
       return;

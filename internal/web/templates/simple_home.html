@@ -17,7 +17,7 @@
 </section>
 
 <section class="tile-grid">
-  <a class="tile" href="/prove"><span class="tile-icon ok"><svg class="icon"><use href="#i-auth"/></svg></span><strong>证明我是我</strong><small>一键验证这台设备</small></a>
+  <a class="tile" href="/prove"><span class="tile-icon ok"><svg class="icon"><use href="#i-auth"/></svg></span><strong>本机签名自检</strong><small>检查这台设备的密钥是否可用</small></a>
   <a class="tile" href="/notes"><span class="tile-icon"><svg class="icon"><use href="#i-memory"/></svg></span><strong>我的内容</strong><small>写下并保存内容</small></a>
   <a class="tile" href="/devices"><span class="tile-icon"><svg class="icon"><use href="#i-devices"/></svg></span><strong>我的设备</strong><small>管理登录设备</small></a>
   <a class="tile" href="/backup"><span class="tile-icon warn"><svg class="icon"><use href="#i-lock"/></svg></span><strong>备份与恢复</strong><small>守护好你的身份</small></a>
@@ -31,7 +31,7 @@
     <label>你的名字<input name="displayName" placeholder="例如：小明" autofocus></label>
     <div class="form-actions"><button class="primary-button block" type="submit"><svg class="icon"><use href="#i-plus"/></svg>创建身份</button></div>
   </form>
-  <p class="callout">名字之后可改，你的身份码永远不变。</p>
+  <p class="callout">名字只用于展示；你的身份码创建后永远不变。</p>
 </section>
 {{end}}
 {{template "simple_shell_end" .}}

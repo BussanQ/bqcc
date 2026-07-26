@@ -1,16 +1,16 @@
 {{template "simple_shell_start" .}}
 <section class="simple-card center">
   <span class="tile-icon ok big"><svg class="icon"><use href="#i-auth"/></svg></span>
-  <h2>证明这是我</h2>
-  <p class="muted">点一下，这台设备会用你的私钥现场签名，并用你的公开身份验证——全程不联网、不用账号密码。</p>
-  <form class="action-form" data-endpoint="/api/selfcheck" data-toast="验证完成">
-    <div class="form-actions"><button class="primary-button block big" type="submit"><svg class="icon"><use href="#i-check"/></svg>证明这是我</button></div>
+  <h2>本机签名自检</h2>
+  <p class="muted">这台设备会在本机完成一次「出题—设备签名—公开名片验签」，检查当前设备密钥是否可用。它不会联系中心服务器，也不代表已经向第三方完成登录。</p>
+  <form class="action-form" data-endpoint="/api/selfcheck" data-toast="自检完成">
+    <div class="form-actions"><button class="primary-button block big" type="submit"><svg class="icon"><use href="#i-check"/></svg>检查这台设备</button></div>
   </form>
 </section>
 
 <section class="simple-card">
   <div class="panel-head"><svg class="icon"><use href="#i-globe"/></svg><span class="eyebrow">给别人验证</span></div>
-  <p class="muted">需要让别人确认「这是你」时，把你的公开名片给对方即可——它不含任何私钥，别人无法冒充你。</p>
+  <p class="muted">需要让别人核验这个身份码和变更记录时，把公开名片交给对方。它不含私钥；真正登录时仍由对方出题、你用设备密钥签名作答。</p>
   <form class="action-form" data-endpoint="/api/identity/export-state" data-toast="公开名片已导出">
     <div class="form-actions">
       <button class="ghost-button" type="submit"><svg class="icon"><use href="#i-send"/></svg>导出我的公开名片</button>

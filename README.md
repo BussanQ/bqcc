@@ -59,12 +59,12 @@
 
 **可选扩展**
 
-- public memory manifest / object（公开内容）
+- 累积式 public/private memory manifest：当前内容列表、身份根、发布和备份使用同一集合
 - private memory 加密、private memory root、本地解密（只有我能看）
 - standalone attestation 签发 / 验证 / 附着（他人背书）
 - libp2p 远端 state 解析与对象拉取（点对点分享）
-- 口令加密备份 / 恢复
-- CLI 原型 + 浏览器操作台（简单模式 / 高级模式）
+- v2 完整加密备份 / 恢复（钥匙串 + 当前内容对象 + 已附着背书），兼容 v1 仅身份备份
+- 默认安全的 CLI 摘要输出 + 浏览器操作台（简单模式 / 高级模式）
 
 ## 当前未实现
 
@@ -145,7 +145,8 @@ attestation 的流转是：
 - `internal/auth/`：challenge-response
 - `internal/attestation/`：attestation 创建、签名、验证
 - `internal/p2p/`：libp2p resolver、state / object exchange
-- `internal/app/`：操作服务层，复用协议能力并隐藏默认私钥输出
+- `internal/storage/`：安全文件写入、identity 加载、引用对象闭包校验、v2 backup bundle
+- `internal/app/`：共享操作服务层，统一内容目录、备份、验证和安全摘要
 - `internal/web/`：HTTP handlers、templates、static assets
 
 ## 环境要求
@@ -191,11 +192,15 @@ decentid version
 go run ./cmd/decentid create -name alice -out alice.json
 ```
 
-### 2. 查看身份
+若 `alice.json` 已存在会默认拒绝覆盖；只有明确替换身份时才使用危险参数 `-force`。
+
+### 2. 查看安全摘要
 
 ```bash
 go run ./cmd/decentid show -identity alice.json
 ```
+
+`show` 和 `keys` 只输出公开 key 与“本地是否持有私钥”的布尔摘要，不再打印 `localKeys/privateKey`。`alice.json` 本身仍是不可外发的本地钥匙串。
 
 ### 3. 添加 public memory
 
@@ -246,7 +251,8 @@ go run ./cmd/decentid show -identity alice.json
 
 ```bash
 go run ./cmd/decentid issue-attestation -identity issuer.json -subject "did:p2p:..." -claim-type known -claim-value alice -out attestation.json
-go run ./cmd/decentid verify-attestation -issuer issuer.json -attestation attestation.json
+go run ./cmd/decentid export-state -identity issuer.json -out issuer-state.json
+go run ./cmd/decentid verify-attestation -issuer-state issuer-state.json -attestation attestation.json
 go run ./cmd/decentid attach-attestation -identity alice.json -attestation attestation.json
 ```
 
@@ -271,8 +277,9 @@ go run ./cmd/decentid resolve -peer "<peer-multiaddr>" -id "did:p2p:..."
 ```
 
 当前 publish 行为：
+- 先校验 signed identity state、当前 public manifest、全部成员对象与可选背书的 CID/签名/引用闭包
 - 发布 signed identity state
-- 放入 public memory manifest / object
+- 放入当前 public memory manifest 和全部成员 object
 - 默认放入 attached attestation object
 - **不会发布 private memory**
 
@@ -288,12 +295,12 @@ go run ./cmd/decentid web -identity alice.json -addr 127.0.0.1:8080
 
 ### 简单模式（默认，面向大众）
 
-打开本地 URL 即进入零术语的简单界面，底部 tab 导航「我 / 证明 / 内容 / 设备 / 备份」：
-- **我**：30 秒创建身份；头像 + 名字 + 「我的身份码」（短 DID，可复制、可出示二维码）。
-- **证明我是我**：一个按钮一键自检（内部 challenge→respond→verify，给出 ✓/✗），无需任何 JSON 粘贴；要给别人验证时导出公开名片或出示身份码二维码。
-- **我的内容**：写公开/「只有我能看」（加密）内容，列表展示，私有项点「查看」即时解密。
-- **我的设备**：友好的设备列表，一键「移除」（撤销）。
-- **备份与恢复**：用口令导出加密备份文件、用文件+口令一键恢复（scrypt + AES-256-GCM）。
+打开本地 URL 即进入简单界面，底部 tab 导航「我 / 验证 / 内容 / 设备 / 备份」：
+- **我**：创建身份；头像 + 名字 + 「我的身份码」（短 DID，可复制、可出示二维码）。已有 identity 路径不会被创建 API 覆盖。
+- **本机签名自检**：在本机完成 challenge→respond→verify，检查当前设备密钥是否可用；它不等于已向第三方完成登录。
+- **当前内容**：写公开/「只有我能看」（加密）内容；列表、身份根、发布和备份均从累积 manifest 展开。检测到旧版未纳入对象时可显式整理。
+- **本地设备密钥**：新增或撤销当前钥匙串中的 device key；当前并未实现把密钥自动配对到另一台物理设备。
+- **完整备份与恢复**：v2 bundle 包含钥匙串、当前公私内容和已附着背书；兼容导入 v1 仅身份备份并显示警告。
 
 身份码二维码由本地 `/api/qr` 服务端生成（仅同源 PNG）。
 
@@ -314,7 +321,7 @@ go run ./cmd/decentid web -identity alice.json -addr 127.0.0.1:8080
 - 默认 API 不返回 `localKeys` 或私钥字节
 - private memory 只有用户点击 reveal 时才显示明文
 - publish 仍只发布 signed identity state、public memory 和可选 attached attestation，不发布 private memory
-- 备份文件用口令派生密钥（scrypt）+ AES-256-GCM 加密，口令错误或文件被篡改都无法恢复
+- v2 备份用 scrypt + AES-256-GCM 加密，并在恢复前验证 identity replay、对象 CID 和完整引用；口令错误或文件被篡改都无法恢复
 
 ## CLI 命令速查
 
@@ -388,12 +395,14 @@ private object 典型字段：
 
 ### `<manifestCID>.json`
 
-memory manifest 文件，包含：
+memory manifest 文件，是当前同 visibility 内容集合的不可变累积快照，包含：
 - `cid`
-- `items`
+- `items`（保留已有 CID，并在末尾追加新内容 CID）
 - `rootHash`
 - `visibility`
 - `signature`
+
+identity 的 `PublicMemoryRoot` / `PrivateMemoryRoot` 只指向当前快照；旧 manifest 与旧对象保持内容寻址不变。
 
 ### `<attestationCID>.json`
 
@@ -424,8 +433,11 @@ go vet ./...
 - root rotation 后 DID 保持不变
 - revoked device 无法继续用于 challenge 签名
 - private memory 不暴露明文且可本地解密
+- 累积 manifest、root rotation 前后内容校验、旧版本地内容过滤与整理
+- v2 完整备份跨目录恢复、v1 仅身份备份兼容、错误口令与对象完整性失败
 - attestation 签名、未生效（validFrom）与过期校验
-- P2P 远端 state / object 拉取
+- P2P 远端 state / object 拉取，发布集合排除 private memory
+- Web 创建防覆盖、私钥不出现在摘要 API、简单模式关键文案
 - 验证层对抗性拒绝：伪造 DID（与 root 公钥不符）、由非 root key 签名的管理事件、回填时间戳、对端返回与 CID 不符的对象，均被拒绝
 
 ## 已知限制
@@ -433,6 +445,7 @@ go vet ./...
 - 这是原型，不是生产系统
 - 私钥仍以本地明文 JSON 保存
 - private memory 目前只支持 owner-self decrypt
+- `add-device` 目前只在同一本地钥匙串中新增 key，不包含跨物理设备配对或安全传输
 - attestation 目前只做对象级签名验证，不做更高层 trust policy
 - `resolve` CLI 当前只直接输出 identity state，不自动追取关联对象
 - object store 目前是进程内内存缓存，不是持久化存储
